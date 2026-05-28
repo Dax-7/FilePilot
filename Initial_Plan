@@ -1,0 +1,1105 @@
+# FilePilot 初步需求文档
+
+## 1. 项目定位
+
+**FilePilot** 是一个面向开发者、实验服务器、个人主机和 Agent 工作流的跨平台文件传输工具。
+
+项目目标是提供一种更简单、更稳定、更适合自动化调用的端到端文件传输体验。FilePilot 不把自身定位为某个底层传输工具的简单封装，而是作为一个上层传输编排工具，负责完成文件打包、会话创建、双端配对、传输状态跟踪、网络诊断、日志记录和 Agent-friendly 输出。
+
+FilePilot 的典型使用场景包括：
+
+* 实验室服务器与个人电脑之间传输实验结果；
+* Linux 服务器与 Windows 主机之间传输日志、模型输出、数据集切片；
+* 嵌入式设备、开发板或边缘设备向主机传输采集数据；
+* 编程 Agent 在任务执行后自动打包并发送结果文件；
+* 用户不希望登录网盘、配置复杂网络或手动处理传输密钥的场景。
+
+FilePilot 当前阶段可以调用成熟的 relay-assisted transfer backend （参考项目https://github.com/schollz/croc.git）完成底层传输，但对外不强调具体底层工具。底层传输能力应通过 backend adapter 抽象出来，后续允许替换为自研传输模块或其他传输后端。
+
+---
+
+## 2. 核心设计原则
+
+FilePilot 的设计原则如下：
+
+1. **双端执行，不依赖直连 IP**
+
+   FilePilot 不假设发送端和接收端可以通过公网 IP、内网 IP 或 SSH 互相访问。实验室服务器、校园网、NAT、代理网络、远程开发机等场景中，双方经常无法直接连接。因此 FilePilot 采用类似 relay-assisted transfer 的双端执行模型：发送端执行发送命令，接收端执行接收命令，二者通过中继或会话服务完成连接。
+
+2. **隐藏底层一次性密钥**
+
+   普通用户不需要直接复制或粘贴底层传输后端生成的一次性密钥、code phrase 或复杂接收命令。FilePilot 负责在内部捕获、保存、转发和消费这些底层会话凭据。
+
+3. **保留端到端使用体验**
+
+   用户视角中，发送端只需要执行：
+
+   ```bash
+   filepilot send <path>
+   ```
+
+   接收端只需要执行：
+
+   ```bash
+   filepilot receive
+   ```
+
+   或在需要指定会话时执行：
+
+   ```bash
+   filepilot receive <session-id>
+   ```
+
+   用户看到的是 FilePilot 的会话 ID、传输状态和错误提示，而不是底层传输工具的原始密钥。
+
+4. **面向人类用户和编程 Agent**
+
+   FilePilot 的 CLI 输出应同时适合人类阅读和 Agent 解析。所有核心命令需要支持 `--json` 输出，错误码应稳定，日志应结构化。
+
+5. **底层传输后端可替换**
+
+   当前版本可以先通过调用现有传输后端实现，但架构上必须保留 `TransferBackend` 抽象。后续可以将当前 backend 替换为自研 relay backend，而不影响上层 CLI、GUI、日志、配置和 Agent 接口。
+
+---
+
+## 3. 项目目标
+
+### 3.1 功能目标
+
+FilePilot 需要实现以下能力：
+
+1. 支持 Linux / Windows / macOS 之间的文件和目录传输；
+2. 支持发送端和接收端均通过 FilePilot CLI 执行操作；
+3. 支持目录自动压缩，避免大量小文件直接传输导致效率下降；
+4. 支持自动创建传输会话；
+5. 支持隐藏底层传输密钥，避免用户手动复制粘贴；
+6. 支持通过轻量 Session/Rendezvous 控制层完成双端配对；
+7. 支持公共 relay 或自定义 relay；
+8. 支持传输状态展示；
+9. 支持传输日志记录；
+10. 支持网络环境检查；
+11. 支持代理、TUN、Fake-IP 等常见网络问题检测和提示；
+12. 支持 Agent-friendly JSON 输出；
+13. 后续支持轻量 GUI，使传输过程接近普通文件夹传输体验。
+
+### 3.2 简历目标
+
+该项目需要体现 Linux / C++ / Go / Python / 系统工具方向的工程能力，包括：
+
+* Linux CLI 工具开发；
+* 跨平台命令行工具设计；
+* 文件系统操作；
+* 自动打包与压缩；
+* 子进程管理；
+* 会话状态机设计；
+* relay-assisted transfer workflow；
+* 网络连通性诊断；
+* 代理环境检测；
+* 日志系统；
+* 配置系统；
+* Agent-friendly CLI 接口设计；
+* 可插拔 backend 架构设计；
+* 后续可扩展到自研传输后端或 GUI。
+
+项目不应包装成“发明新的文件传输协议”，而应定位为：
+
+> 面向开发者、实验服务器和 Agent 工作流的跨平台文件传输编排工具。
+
+---
+
+## 4. 项目名称
+
+项目名称：
+
+```text
+FilePilot
+```
+
+推荐命令名称：
+
+```bash
+filepilot
+```
+
+可选短命令别名：
+
+```bash
+fpilot
+fp
+```
+
+其中 `filepilot` 作为主命令最清晰，`fp` 可作为可选别名，但需要注意与系统已有命令冲突。
+
+---
+
+## 5. 典型使用场景
+
+### 5.1 实验室服务器到个人电脑
+
+用户在实验室服务器上运行实验，产生以下内容：
+
+* 实验结果；
+* 日志文件；
+* 模型输出；
+* 图片；
+* JSONL / CSV / TXT 文件；
+* 推理结果目录；
+* 数据集切片；
+* 压缩包。
+
+用户希望快速传回个人 Windows 电脑，但实验室服务器通常无法通过公网 IP、内网 IP 或 SSH 被个人电脑直接访问。因此 FilePilot 不采用发送端主动 SSH 到接收端的模型，而是采用双方都连接到会话/中继服务的方式完成传输。
+
+典型路径：
+
+```text
+Linux Server  →  Windows PC
+```
+
+### 5.2 开发板或边缘设备到主机
+
+适用于：
+
+```text
+Jetson / NXP / ARM Board  →  Host PC
+```
+
+这类设备可能处于复杂网络环境中，无法稳定使用传统 IP 直连方式。FilePilot 只要求双方能访问同一个 relay/session 服务。
+
+### 5.3 Agent 自动发送结果
+
+编程 Agent 在服务器上完成任务后，可以调用：
+
+```bash
+filepilot send ./outputs --json
+```
+
+FilePilot 自动完成目录压缩、创建会话、输出 session 信息、记录日志，并返回结构化 JSON，便于 Agent 继续调用或通知用户。
+
+---
+
+## 6. 产品形态
+
+FilePilot 分为三层形态：
+
+```text
+Core CLI  →  Agent-friendly CLI  →  Optional GUI
+```
+
+### 6.1 第一阶段：Core CLI
+
+第一阶段优先实现 CLI 工具。
+
+CLI 是项目核心，因为：
+
+* 适合 Linux / 服务器 / 嵌入式设备；
+* 方便通过终端使用；
+* 方便被 Agent 调用；
+* 方便写入 shell 脚本；
+* 实现成本低于 GUI；
+* 更适合体现系统工具开发能力。
+
+### 6.2 第二阶段：Agent-friendly CLI
+
+CLI 需要具备稳定、可解析、低交互的输出格式。
+
+核心命令包括：
+
+```bash
+filepilot send <path>
+filepilot receive
+filepilot receive <session-id>
+filepilot doctor
+filepilot config show
+filepilot clean
+```
+
+所有核心命令应支持：
+
+```bash
+--json
+--verbose
+--quiet
+```
+
+### 6.3 第三阶段：轻量 GUI
+
+GUI 不是 MVP 核心，但后续可以作为产品化补充。
+
+GUI 目标：
+
+* 拖拽文件或文件夹；
+* 一键发送；
+* 显示会话 ID；
+* 显示接收状态；
+* 显示传输进度；
+* 显示历史记录；
+* 显示错误原因；
+* 打开下载目录。
+
+GUI 不需要账号系统、复杂云盘能力或网页文件管理系统。
+
+---
+
+## 7. 总体技术架构
+
+FilePilot 建议采用如下架构：
+
+```text
+FilePilot CLI / GUI
+        ↓
+Session Manager
+        ↓
+Transfer Orchestrator
+        ↓
+Transfer Backend Adapter
+        ↓
+Current Transfer Backend / Future Native Backend
+```
+
+辅助模块：
+
+```text
+Packaging Module
+Network Doctor
+Config Manager
+Log Manager
+Progress Parser
+JSON Output Layer
+Optional Rendezvous Service
+```
+
+### 7.1 Session Manager
+
+Session Manager 负责：
+
+* 创建 FilePilot 会话；
+* 生成用户可见的 session-id；
+* 维护会话状态；
+* 记录发送端和接收端是否已连接；
+* 管理底层传输后端生成的一次性凭据；
+* 控制凭据过期时间；
+* 避免在日志中明文保存底层密钥。
+
+### 7.2 Transfer Backend Adapter
+
+FilePilot 不应在业务代码中直接散落调用底层传输命令，而应通过 backend adapter 调用。
+
+建议抽象接口：
+
+```text
+TransferBackend
+  - create_send_session(path, options)
+  - start_send(session)
+  - start_receive(credential, output_dir, options)
+  - parse_progress(output)
+  - cancel(session_id)
+```
+
+当前阶段实现：
+
+```text
+CrocBackend
+```
+
+未来可替换为：
+
+```text
+NativeRelayBackend
+LocalHttpBackend
+RsyncBackend
+CustomBackend
+```
+
+### 7.3 Rendezvous / Session 控制层
+
+由于 FilePilot 不依赖 SSH，也不要求双方 IP 可达，因此需要一个轻量的 Rendezvous / Session 控制层，用于让发送端和接收端交换会话信息。
+
+该控制层只负责传递会话元信息，不负责承载大文件数据。
+
+控制层职责：
+
+* 注册发送会话；
+* 保存短期有效的底层传输凭据；
+* 允许接收端根据 session-id 查询会话；
+* 标记会话状态；
+* 设置会话过期时间；
+* 避免长期保存敏感信息；
+* 后续支持自建服务或本地部署。
+
+数据传输仍由底层 transfer backend 完成，控制层只做轻量协调。
+
+---
+
+## 8. 双端传输流程设计
+
+### 8.1 用户视角流程
+
+发送端：
+
+```bash
+filepilot send results/
+```
+
+输出示例：
+
+```text
+FilePilot session created.
+
+Session ID:
+FP-84K2
+
+Receiver command:
+filepilot receive FP-84K2
+
+Waiting for receiver...
+```
+
+接收端：
+
+```bash
+filepilot receive FP-84K2
+```
+
+输出示例：
+
+```text
+Connecting to FilePilot session FP-84K2...
+Receiving results_20260528_163000.tar.gz...
+Transfer completed.
+Saved to: ./downloads/results/
+```
+
+用户只需要处理 FilePilot 的 session-id，不需要复制底层传输后端生成的原始密钥。
+
+### 8.2 内部流程
+
+```text
+发送端执行 filepilot send <path>
+        ↓
+检查路径是否存在
+        ↓
+判断文件或目录
+        ↓
+目录自动压缩为 tar.gz
+        ↓
+调用 TransferBackend 创建发送会话
+        ↓
+捕获底层 backend 生成的一次性凭据
+        ↓
+Session Manager 生成 FilePilot session-id
+        ↓
+将底层凭据短期注册到 Rendezvous 控制层
+        ↓
+发送端等待接收端加入
+        ↓
+接收端执行 filepilot receive <session-id>
+        ↓
+接收端从 Rendezvous 控制层获取底层凭据
+        ↓
+接收端调用 TransferBackend 自动执行接收
+        ↓
+双方传输文件
+        ↓
+记录日志
+        ↓
+清理临时凭据和临时压缩文件
+```
+
+### 8.3 为什么不使用 SSH
+
+FilePilot 不把 SSH 作为主路线，原因是：
+
+* 实验室服务器可能无法被个人电脑直接访问；
+* 接收端 Windows 主机通常没有稳定 SSH Server；
+* 用户不一定拥有服务器的入站网络权限；
+* NAT、校园网、防火墙环境下 SSH 路线不稳定；
+* FilePilot 目标是接近 croc 式的双端执行体验，而不是变成 scp/rsync 的替代品。
+
+因此 FilePilot 的主路线是：
+
+```text
+双端执行 FilePilot
+        ↓
+通过 FilePilot session-id 完成配对
+        ↓
+底层 transfer backend 完成实际文件传输
+```
+
+---
+
+## 9. 核心命令设计
+
+### 9.1 发送文件或目录
+
+```bash
+filepilot send <path>
+```
+
+示例：
+
+```bash
+filepilot send result.jsonl
+filepilot send results/
+```
+
+行为：
+
+* 如果 `<path>` 是单个文件，直接发送；
+* 如果 `<path>` 是目录，默认自动压缩为 `.tar.gz` 后发送；
+* 发送前检查底层传输后端是否可用；
+* 发送前执行基础网络和代理环境检查；
+* 创建 FilePilot session-id；
+* 隐藏底层一次性密钥；
+* 输出接收端 FilePilot 命令；
+* 等待接收端连接；
+* 传输结束后记录日志。
+
+### 9.2 接收文件
+
+```bash
+filepilot receive <session-id>
+```
+
+示例：
+
+```bash
+filepilot receive FP-84K2
+```
+
+行为：
+
+* 根据 session-id 查询会话；
+* 自动获取底层传输凭据；
+* 自动调用底层接收流程；
+* 将文件保存到默认下载目录；
+* 如果接收到压缩包，按配置决定是否自动解压；
+* 记录接收日志。
+
+### 9.3 交互式接收
+
+```bash
+filepilot receive
+```
+
+行为：
+
+* 提示用户输入 session-id；
+* 或显示最近可接收会话；
+* 后续 GUI/Agent 模式中可自动选择目标会话。
+
+### 9.4 仅打包目录
+
+```bash
+filepilot pack <dir>
+```
+
+示例：
+
+```bash
+filepilot pack results/
+```
+
+输出：
+
+```text
+results_20260528_163000.tar.gz
+```
+
+### 9.5 网络诊断
+
+```bash
+filepilot doctor
+```
+
+检查内容：
+
+* FilePilot 版本；
+* 当前系统类型；
+* 底层 transfer backend 是否可用；
+* 当前系统是否设置 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`；
+* DNS 是否疑似解析到 Fake-IP；
+* 默认 relay/session 服务是否可达；
+* 当前工作目录是否可读写；
+* 当前用户权限；
+* 下载目录是否可写。
+
+### 9.6 清理临时文件
+
+```bash
+filepilot clean
+```
+
+清理内容：
+
+* 自动生成的 `.tar.gz` 文件；
+* 临时缓存文件；
+* 过期日志；
+* 过期 session 缓存。
+
+### 9.7 查看配置
+
+```bash
+filepilot config show
+```
+
+### 9.8 设置 relay / session 服务
+
+```bash
+filepilot config set relay <host:port>
+filepilot config set rendezvous <url>
+```
+
+示例：
+
+```bash
+filepilot config set relay relay.example.com:9009
+filepilot config set rendezvous https://session.example.com
+```
+
+### 9.9 JSON 输出
+
+供 Agent 调用：
+
+```bash
+filepilot send results/ --json
+filepilot receive FP-84K2 --json
+filepilot doctor --json
+```
+
+发送端 JSON 示例：
+
+```json
+{
+  "status": "waiting_receiver",
+  "mode": "send",
+  "session_id": "FP-84K2",
+  "input_path": "results/",
+  "packed": true,
+  "archive": "results_20260528_163000.tar.gz",
+  "receiver_command": "filepilot receive FP-84K2",
+  "backend": "default",
+  "credential_visible": false
+}
+```
+
+接收端 JSON 示例：
+
+```json
+{
+  "status": "completed",
+  "mode": "receive",
+  "session_id": "FP-84K2",
+  "saved_to": "./downloads/results/",
+  "unpacked": true
+}
+```
+
+---
+
+## 10. 分阶段实现路线
+
+### Phase 1：本地 CLI MVP
+
+目标：先完成 FilePilot 的基础 CLI、打包、诊断、日志和底层 backend 调用能力。
+
+必须实现：
+
+* `filepilot send <path>`;
+* `filepilot pack <dir>`;
+* `filepilot doctor`;
+* `filepilot clean`;
+* 自动判断文件 / 目录；
+* 目录自动压缩；
+* 调用底层传输后端；
+* 显示接收端命令；
+* 检测底层传输后端是否可用；
+* 检测代理环境变量；
+* 记录日志；
+* 支持 `--json`。
+
+该阶段可以暂时显示底层接收命令，但代码结构上必须为后续隐藏密钥预留 Session Manager 和 Backend Adapter。
+
+验收标准：
+
+```bash
+filepilot send results/
+```
+
+能够自动压缩目录并启动传输。
+
+```bash
+filepilot doctor
+```
+
+能够检测传输后端、代理环境变量和基础网络风险。
+
+### Phase 2：FilePilot Session 层
+
+目标：引入 FilePilot 自己的 session-id，让用户不再直接接触底层传输密钥。
+
+必须实现：
+
+* `filepilot send <path>` 创建 FilePilot session-id；
+* 发送端捕获底层 backend 生成的一次性凭据；
+* 凭据不直接暴露给普通用户；
+* `filepilot receive <session-id>` 根据 session-id 获取底层凭据；
+* 自动执行底层接收流程；
+* 会话设置过期时间；
+* 日志中不保存明文底层凭据；
+* 支持 `--json` 输出 session 状态。
+
+该阶段需要一个最小可用的 Rendezvous 控制层。该控制层可以先做得很轻：
+
+```text
+POST /sessions
+GET  /sessions/{session_id}
+POST /sessions/{session_id}/join
+POST /sessions/{session_id}/complete
+```
+
+控制层只保存短期会话信息，不存储文件数据。
+
+### Phase 3：双端 FilePilot 完整体验
+
+目标：形成接近产品化的双端执行体验。
+
+发送端：
+
+```bash
+filepilot send results/
+```
+
+接收端：
+
+```bash
+filepilot receive FP-84K2
+```
+
+必须实现：
+
+* 发送端等待接收端加入；
+* 接收端自动获取会话信息；
+* 双方状态同步；
+* 传输开始、进行中、完成、失败状态展示；
+* 错误原因解释；
+* 临时文件自动清理；
+* 可配置下载目录；
+* 可配置是否自动解压；
+* 可配置 relay/session 服务。
+
+该阶段后，FilePilot 的使用体验不再是“底层工具命令生成器”，而是一个独立的端到端传输工具。
+
+### Phase 4：工程化增强
+
+目标：提高稳定性、可维护性和简历价值。
+
+实现内容：
+
+* 配置文件；
+* 多平台路径兼容；
+* 更完整的错误码；
+* 更完整的网络诊断；
+* 传输历史记录；
+* 进度解析；
+* 失败重试；
+* relay/session 服务配置；
+* 自定义下载目录；
+* 自动解压策略；
+* GitHub Release；
+* Windows / Linux / macOS 打包。
+
+### Phase 5：可选 GUI
+
+目标：提供轻量可视化界面。
+
+功能包括：
+
+* 文件 / 文件夹拖拽；
+* 一键发送；
+* 输入 session-id 接收；
+* 传输进度展示；
+* 历史记录；
+* 打开下载目录；
+* 错误提示；
+* 配置 relay/session 服务。
+
+GUI 不是核心目标，不应影响 CLI 主线。
+
+### Phase 6：后续自研传输后端
+
+目标：逐步降低对当前底层传输工具的依赖。
+
+可能方向：
+
+* 自研 relay server；
+* 自研传输 backend；
+* 多 backend 支持；
+* 局域网直连优先，失败后 relay；
+* 断点续传；
+* 增量同步；
+* 更精细的进度控制；
+* 更稳定的结构化状态输出。
+
+该阶段不是 MVP 必需内容。当前阶段重点是先把 FilePilot 的 CLI、Session Manager、双端配对和自动化体验做好。
+
+---
+
+## 11. 配置文件设计
+
+默认配置路径：
+
+```text
+~/.filepilot/config.yaml
+```
+
+示例：
+
+```yaml
+default_relay: ""
+default_rendezvous: "https://session.filepilot.local"
+auto_pack_dir: true
+auto_unpack: true
+keep_archive: false
+download_dir: "~/Downloads/FilePilot"
+log_dir: "~/.filepilot/logs"
+cache_dir: "~/.filepilot/cache"
+json_output: false
+session_expire_minutes: 10
+hide_backend_credential: true
+```
+
+字段说明：
+
+| 字段                        | 说明                        |
+| ------------------------- | ------------------------- |
+| `default_relay`           | 默认传输 relay 地址             |
+| `default_rendezvous`      | 默认 FilePilot session 服务地址 |
+| `auto_pack_dir`           | 是否自动压缩目录                  |
+| `auto_unpack`             | 接收压缩包后是否自动解压              |
+| `keep_archive`            | 传输完成后是否保留压缩包              |
+| `download_dir`            | 默认下载目录                    |
+| `log_dir`                 | 日志目录                      |
+| `cache_dir`               | 临时缓存目录                    |
+| `json_output`             | 是否默认输出 JSON               |
+| `session_expire_minutes`  | 会话过期时间                    |
+| `hide_backend_credential` | 是否隐藏底层传输凭据                |
+
+---
+
+## 12. 日志需求
+
+每次传输记录一条日志。
+
+日志内容：
+
+* 时间；
+* 模式：send / receive；
+* session-id；
+* 输入路径；
+* 实际发送文件；
+* 是否压缩；
+* 是否自动解压；
+* 文件大小；
+* relay 地址；
+* rendezvous 地址；
+* backend 类型；
+* 传输状态；
+* 错误信息。
+
+注意：
+
+* 日志中不应保存底层传输密钥；
+* 如需调试，应通过 debug 模式临时显示；
+* debug 模式应明确提醒用户敏感信息风险。
+
+日志示例：
+
+```json
+{
+  "time": "2026-05-28 16:30:00",
+  "mode": "send",
+  "session_id": "FP-84K2",
+  "input_path": "results/",
+  "archive_path": "results_20260528_163000.tar.gz",
+  "packed": true,
+  "relay": "default",
+  "rendezvous": "default",
+  "backend": "default",
+  "status": "success",
+  "credential_logged": false
+}
+```
+
+---
+
+## 13. 错误处理需求
+
+### 13.1 底层传输后端不可用
+
+提示：
+
+```text
+未检测到可用的传输后端，请检查 FilePilot 安装或运行 filepilot doctor。
+```
+
+### 13.2 文件不存在
+
+提示：
+
+```text
+路径不存在，请检查输入路径。
+```
+
+### 13.3 权限不足
+
+提示：
+
+```text
+当前用户没有读取该文件或目录的权限。
+```
+
+### 13.4 代理风险
+
+如果检测到：
+
+```text
+HTTP_PROXY
+HTTPS_PROXY
+ALL_PROXY
+```
+
+提示：
+
+```text
+检测到代理环境变量，可能影响 relay 或 session 服务连接。
+```
+
+### 13.5 Fake-IP 风险
+
+如果检测到目标解析到：
+
+```text
+198.18.x.x
+```
+
+提示：
+
+```text
+检测到疑似 Fake-IP / TUN 环境，可能导致 relay 或 session 服务连接失败。
+```
+
+### 13.6 大量小文件
+
+如果目录中文件数量超过阈值，例如 100 个：
+
+```text
+检测到大量小文件，FilePilot 已自动压缩后传输。
+```
+
+### 13.7 会话不存在
+
+提示：
+
+```text
+未找到该 FilePilot session，请检查 session-id 是否正确，或确认发送端会话是否已过期。
+```
+
+### 13.8 会话过期
+
+提示：
+
+```text
+该 FilePilot session 已过期，请让发送端重新创建传输会话。
+```
+
+---
+
+## 14. Agent 调用适配
+
+FilePilot 需要适合编程 Agent 调用。
+
+### 14.1 设计原则
+
+* 命令清晰；
+* 参数稳定；
+* 输出可解析；
+* 错误码明确；
+* 支持 `--json`；
+* 不强依赖交互式输入；
+* 出错时给出明确修复建议；
+* 不在普通输出中暴露底层密钥。
+
+### 14.2 返回码设计
+
+| 返回码 | 含义          |
+| --: | ----------- |
+|   0 | 成功          |
+|   1 | 通用错误        |
+|   2 | 路径错误        |
+|   3 | 传输后端不可用     |
+|   4 | 网络检查失败      |
+|   5 | 压缩失败        |
+|   6 | 传输失败        |
+|   7 | session 不存在 |
+|   8 | session 已过期 |
+|   9 | 权限不足        |
+
+### 14.3 Agent 示例
+
+```bash
+filepilot doctor --json
+```
+
+```bash
+filepilot send ./results --json
+```
+
+```bash
+filepilot receive FP-84K2 --json
+```
+
+---
+
+## 15. 非目标
+
+FilePilot 第一阶段不做以下内容：
+
+* 不做云盘；
+* 不做用户账号系统；
+* 不做网页上传平台；
+* 不做多人权限管理；
+* 不做企业级文件分发系统；
+* 不做完整 rsync 增量同步；
+* 不做复杂设备管理平台；
+* 不把 SSH 作为主路线；
+* 不要求发送端和接收端 IP 直连；
+* 不在第一阶段自研完整加密传输协议。
+
+---
+
+## 16. 推荐开发顺序
+
+### Step 1：重命名与项目骨架
+
+* 项目名改为 FilePilot；
+* 命令名使用 `filepilot`；
+* 建立 CLI 项目结构；
+* 建立配置、日志、缓存目录；
+* 建立 backend adapter 抽象。
+
+### Step 2：实现基础 send / pack / doctor
+
+* 实现文件发送；
+* 实现目录自动压缩；
+* 实现基础网络诊断；
+* 实现日志记录；
+* 实现 JSON 输出。
+
+### Step 3：实现 receive 命令
+
+* 接收端也统一通过 FilePilot 执行；
+* 支持 `filepilot receive <session-id>`；
+* 初期可先兼容底层接收命令；
+* 后续切换为隐藏密钥模式。
+
+### Step 4：实现 Session Manager
+
+* 生成 FilePilot session-id；
+* 管理会话状态；
+* 管理底层凭据；
+* 控制凭据过期；
+* 日志隐藏敏感信息。
+
+### Step 5：实现最小 Rendezvous 控制层
+
+* 发送端注册 session；
+* 接收端查询 session；
+* 接收端加入 session；
+* 会话完成后清理；
+* 设置过期时间。
+
+### Step 6：完善双端体验
+
+* 发送端等待接收端；
+* 接收端自动接收；
+* 传输状态展示；
+* 传输完成提示；
+* 错误恢复建议；
+* 临时文件清理。
+
+### Step 7：工程化与发布
+
+* 支持配置文件；
+* 支持跨平台路径；
+* 支持 release 打包；
+* 编写 README；
+* 编写使用示例；
+* 编写 Agent 调用示例。
+
+---
+
+## 17. 初始验收标准
+
+MVP 完成后应满足：
+
+1. 在 Linux 服务器上执行：
+
+   ```bash
+   filepilot send results/
+   ```
+
+   可以自动压缩目录并创建传输会话。
+
+2. 在 Windows 主机上执行：
+
+   ```bash
+   filepilot receive <session-id>
+   ```
+
+   可以通过 FilePilot 接收文件。
+
+3. 普通用户不需要看到或复制底层传输密钥。
+
+4. 在 Linux 上执行：
+
+   ```bash
+   filepilot doctor
+   ```
+
+   可以检测传输后端、代理环境变量和基础网络风险。
+
+5. 每次传输可以在日志目录中留下记录。
+
+6. 命令可以被人类直接使用，也可以被 Agent 通过 `--json` 调用。
+
+7. 系统不要求双方 SSH 互通，也不要求双方 IP 可达。
+
+---
+
+## 18. 简历表述方向
+
+项目完成后，简历中可以描述为：
+
+```text
+FilePilot：开发面向开发者、实验服务器与 Agent 工作流的跨平台文件传输 CLI 工具，设计双端执行的 relay-assisted 传输流程，实现目录自动压缩、会话管理、隐藏式传输凭据分发、网络/代理环境诊断、传输日志记录与 Agent-friendly JSON 输出，提升复杂网络环境下服务器与本地主机之间文件传输的自动化能力和可用性。
+```
+
+技术栈可以写：
+
+```text
+Python / Go, Linux CLI, File Transfer, Relay-assisted Transfer, Session Management, Subprocess, tar/gzip, YAML, JSON, Network Diagnostics
+```
+
+如果后续用 Go 重写，可以写：
+
+```text
+Go, Cobra, Linux CLI, File Transfer, Session Management, Relay, File System, tar/gzip, YAML, JSON
+```
+
+---
+
+## 19. 备注
+
+FilePilot 的核心价值不是重新发明文件传输协议，而是在真实开发场景中，把复杂网络环境下的文件传输流程包装成稳定、清晰、可自动化的工具体验。
+
+当前阶段可以复用成熟传输后端，但项目架构必须从一开始保留 backend adapter 和 session manager。这样 FilePilot 后续可以逐步从“调用现有后端”演进为“自研传输后端 + 完整双端工具链”，而不需要推翻上层 CLI、GUI 和 Agent 接口。

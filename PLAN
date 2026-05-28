@@ -1,0 +1,813 @@
+# FilePilot 项目需求与执行计划
+
+## 1. 项目定位
+
+FilePilot 是一个面向开发者、实验服务器、个人主机、边缘设备和 Agent 工作流的跨平台文件传输编排 CLI 工具。
+
+FilePilot 不定位为云盘、账号系统、网页上传平台，也不声称自研新的文件传输协议。它的核心价值是在复杂网络环境下，把“选择文件或目录、创建会话、双端配对、调用传输后端、展示状态、记录日志、输出 Agent 可解析结果”封装成稳定、清晰、可自动化的端到端体验。
+
+Public MVP 的默认路径复用 croc-compatible backend 已有的 rendezvous / relay 能力完成双端会合和数据传输。FilePilot 自身在 MVP 阶段不提供官方公网 rendezvous 服务，也不强制用户部署独立服务。
+
+## 2. 目标用户与场景
+
+目标用户：
+
+- 在 Linux 实验服务器与本地 Windows/macOS/Linux 主机之间传输结果的开发者。
+- 在 Jetson、ARM board、边缘设备与主机之间传输采集数据的工程用户。
+- 需要在任务完成后自动发送输出目录或日志文件的编程 Agent。
+- 不希望配置 SSH Server、网盘、端口映射或手动处理底层 backend 命令的用户。
+
+核心场景：
+
+```text
+Linux Server -> Windows PC
+Edge Device  -> Host PC
+Agent Task   -> Local Receiver
+```
+
+## 3. 已确认的产品边界
+
+Public MVP 必须做到：
+
+- 用户只使用 FilePilot 命令，不直接调用 croc。
+- 普通用户无需手动安装 croc；FilePilot 安装包内置受支持的 backend binary。
+- 发送端使用 `filepilot send <path>`。
+- 接收端使用 `filepilot receive <session-id>`。
+- FilePilot 生成用户可见的一次性 FilePilot Session ID，并将其作为受控 passphrase 传给 backend。
+- 不暴露 backend 原始接收命令、backend code phrase 术语或 backend-specific 交互。
+- `--json` 是稳定 Agent API，不是人类输出的简单包装。
+- 日志和历史记录默认脱敏 FilePilot Session ID。
+
+Public MVP 不做：
+
+- 官方公网 rendezvous / relay 托管服务。
+- 强制用户自建 rendezvous / relay 服务。
+- 运行时自动下载 backend。
+- 自动修改 PATH。
+- 调用 apt、brew、winget、scoop、choco 等系统包管理器。
+- 独立加密传输协议、账号系统、设备配对系统或权限系统。
+- GUI、daemon、serve、sync、resume、login、history 命令。
+- 精确进度百分比或实时速率解析承诺。
+
+## 4. 技术决策
+
+主实现语言：Go。
+
+CLI 框架：Cobra 或等价 Go CLI 框架。
+
+配置格式：`config.toml`。
+
+日志/历史格式：JSONL。
+
+目录打包：Go 标准库 `archive/tar` + `compress/gzip`。
+
+backend 调用：`os/exec`。
+
+MVP 实际 backend：CrocBackend。
+
+架构必须保留 `TransferBackend` 抽象，方便未来替换为 NativeRelayBackend 或其他实现。
+
+已记录 ADR：
+
+- `docs/adr/0001-use-go-for-public-mvp-cli.md`
+- `docs/adr/0002-defer-independent-security-model.md`
+- `docs/adr/0003-bundle-supported-transfer-backend.md`
+- `docs/adr/0004-use-platform-config-paths-and-toml.md`
+
+## 5. 核心概念
+
+FilePilot Session ID：
+
+- 用户可见的一次性会话码。
+- MVP 中同时作为 FilePilot 生成并传给 backend 的受控 passphrase。
+- 可以展示给发送端用户，并由用户通过可信渠道分享给接收端。
+- 有效期内属于敏感信息，不能完整写入日志、崩溃报告或持久历史记录。
+
+Transfer Session：
+
+- 一次发送端和接收端之间的短期传输会话。
+- 发送端进程默认保持运行，直到接收端加入并传输完成或失败。
+
+File Payload：
+
+- 用户选择的单个文件。
+- 即使扩展名是 `.tar.gz`、`.zip` 等，也按原文件保存，不自动解包。
+
+Directory Package：
+
+- FilePilot 为目录创建的归档。
+- 包内必须带 FilePilot manifest。
+- 接收端只有识别为 FilePilot Directory Package 时才默认自动解包。
+
+Transfer Attempt：
+
+- 一次本地 send 或 receive 调用。
+- 成功、失败、取消都应进入传输历史。
+
+## 6. 命令范围
+
+Public MVP 包含：
+
+```bash
+filepilot send <path>
+filepilot receive [session-id]
+filepilot pack <dir>
+filepilot doctor
+filepilot clean
+filepilot config show
+filepilot config set <key> <value>
+```
+
+Public MVP 不包含：
+
+```bash
+filepilot history
+filepilot serve
+filepilot daemon
+filepilot gui
+filepilot sync
+filepilot resume
+filepilot login
+```
+
+`receive` 是 canonical 命令。`recv` 不进入 MVP 要求。
+
+全局选项：
+
+```bash
+--json
+--verbose
+--quiet
+```
+
+`--json` 模式下禁止交互式提示。
+
+## 7. 发送需求
+
+命令：
+
+```bash
+filepilot send <path>
+```
+
+行为：
+
+1. 检查 `<path>` 是否存在。
+2. 检查当前用户是否有读取权限。
+3. 解析 backend，优先级见第 12 节。
+4. 如果 `<path>` 是文件，作为 File Payload 发送。
+5. 如果 `<path>` 是目录，自动打包为 Directory Package。
+6. 生成 FilePilot Session ID。
+7. 将 FilePilot Session ID 作为 backend passphrase 调用 CrocBackend。
+8. 输出接收端命令：
+
+   ```bash
+   filepilot receive <session-id>
+   ```
+
+9. 默认阻塞等待接收端加入并完成传输。
+10. 传输结束后记录 Transfer Attempt。
+11. 根据配置清理或保留临时 Directory Package。
+
+MVP 不实现后台发送守护进程。`--detach` 不进入 MVP。
+
+可选本地超时：
+
+```bash
+filepilot send results/ --timeout 10m
+```
+
+MVP 不承诺服务端强制过期或远程撤销；超时语义是发送端本地取消运行中的 backend 进程。
+
+## 8. 接收需求
+
+命令：
+
+```bash
+filepilot receive <session-id>
+```
+
+行为：
+
+1. 校验 session-id 格式。
+2. 解析 backend。
+3. 使用 session-id 调用 CrocBackend 接收。
+4. 将结果保存到下载目录。
+5. 如果收到 FilePilot Directory Package，按配置默认自动解包。
+6. 如果收到普通 File Payload，原样保存。
+7. 记录 Transfer Attempt。
+
+交互式命令：
+
+```bash
+filepilot receive
+```
+
+MVP 中只提示人类用户输入 session-id，不做会话发现、不列出附近会话、不展示最近可接收会话。
+
+Agent API 规则：
+
+```bash
+filepilot receive --json
+```
+
+如果缺少 session-id，必须返回结构化错误，不进入交互。
+
+## 9. 打包需求
+
+命令：
+
+```bash
+filepilot pack <dir>
+```
+
+行为：
+
+1. 检查目录存在且可读。
+2. 创建 `.tar.gz` Directory Package。
+3. 在归档内写入 `.filepilot/manifest.json`。
+4. 默认输出到 FilePilot cache 目录。
+5. 支持 `--output <path>` 指定输出位置。
+6. 支持 `--json` 输出结构化结果。
+
+Manifest 至少包含：
+
+```json
+{
+  "schema_version": 1,
+  "payload_type": "directory_package",
+  "source_name": "results",
+  "created_by": "filepilot",
+  "created_at": "2026-05-29T00:00:00Z"
+}
+```
+
+`filepilot send <dir>` 必须复用同一套打包逻辑。
+
+## 10. 解包与保存规则
+
+默认下载目录：
+
+- 如果配置了 `download_dir`，使用配置值。
+- 如果未配置，使用平台默认下载位置下的 `FilePilot` 子目录。
+
+解包规则：
+
+- FilePilot Directory Package：默认自动解包。
+- 普通文件：原样保存。
+- 用户传输的 `.tar.gz`、`.zip`、`.7z` 等归档文件：原样保存，不自动解包。
+- 自动解包后如目录名冲突，应生成去重目录名，不覆盖已有内容。
+
+配置项：
+
+```toml
+auto_unpack = true
+keep_packages = false
+download_dir = ""
+```
+
+## 11. 状态与进度
+
+MVP 只承诺稳定 Transfer State，不承诺精确百分比和实时速率。
+
+状态集合：
+
+```text
+preparing
+packing
+waiting_receiver
+transferring
+completed
+failed
+cancelled
+```
+
+人类输出可以展示友好提示。
+
+JSON 输出必须使用稳定字段。
+
+未来可增加：
+
+```bash
+filepilot send results/ --json-stream
+```
+
+MVP 不要求实现 `--json-stream`。
+
+## 12. Backend 打包与解析
+
+MVP 安装包必须内置一个受支持的 croc-compatible backend binary。
+
+backend 解析优先级：
+
+1. 配置文件中的 `backend_path`。
+2. FilePilot 安装目录中的 Bundled Backend。
+3. 系统 PATH 中兼容 backend。
+4. 都不可用时返回 `BACKEND_NOT_FOUND`。
+
+FilePilot 不做：
+
+- 运行时下载 backend。
+- 自动安装 croc。
+- 自动修改 PATH。
+- 自动调用系统包管理器。
+
+`doctor` 必须展示当前选中的 backend 来源。
+
+## 13. 安全边界
+
+MVP 不自研加密传输协议。
+
+文件加密、端到端传输安全、会话认证等底层安全能力由配置的 Transfer Backend 负责。
+
+FilePilot 的安全责任：
+
+- 生成足够随机的 FilePilot Session ID。
+- 提示用户 session-id 是敏感一次性会话码。
+- 避免在普通输出中过度暴露 backend-specific 术语。
+- 不在日志、崩溃报告、持久历史记录中完整记录 session-id。
+- 支持本地超时或取消。
+- 不记录 backend raw command 或 backend credential。
+
+推荐 session-id 形态：
+
+```text
+FP-<word>-<word>-<word>-<random>
+```
+
+示例：
+
+```text
+FP-river-copper-lamp-7K2Q
+```
+
+实际实现必须保证足够熵，不能使用 `FP-84K2` 这类低熵短码作为真实会话码。
+
+日志脱敏示例：
+
+```text
+FP-river-****-7K2Q
+```
+
+## 14. Agent API
+
+`--json` 是稳定 Agent API。
+
+要求：
+
+- 不输出人类说明文本。
+- 不进入交互式输入。
+- 字段名稳定。
+- 错误码稳定。
+- 失败时必须包含可机器解析的 `error.code`。
+- 可包含给人看的 `error.message` 和 `error.hint`。
+
+成功示例：
+
+```json
+{
+  "ok": true,
+  "status": "completed",
+  "mode": "send",
+  "session_id": "FP-river-copper-lamp-7K2Q",
+  "session_id_redacted": "FP-river-****-7K2Q",
+  "input_path": "results/",
+  "payload_type": "directory_package",
+  "packed": true,
+  "archive_path": "",
+  "saved_to": "",
+  "backend": "croc",
+  "error": null
+}
+```
+
+失败示例：
+
+```json
+{
+  "ok": false,
+  "status": "failed",
+  "mode": "receive",
+  "session_id": "",
+  "session_id_redacted": "",
+  "error": {
+    "code": "MISSING_SESSION_ID",
+    "message": "A session ID is required in JSON mode.",
+    "hint": "Run filepilot receive <session-id> --json."
+  }
+}
+```
+
+## 15. 错误码
+
+进程退出码：
+
+| Exit Code | 含义 |
+| ---: | --- |
+| 0 | 成功，或 doctor 只有 warning |
+| 1 | 通用错误 |
+| 2 | 参数错误 |
+| 3 | 路径不存在或不可读 |
+| 4 | backend 不存在或不可执行 |
+| 5 | 打包失败 |
+| 6 | 传输失败 |
+| 7 | session-id 缺失或格式错误 |
+| 8 | 本地超时或用户取消 |
+| 9 | 权限不足 |
+| 10 | 配置错误 |
+
+机器错误码：
+
+```text
+INVALID_ARGUMENT
+PATH_NOT_FOUND
+PERMISSION_DENIED
+BACKEND_NOT_FOUND
+BACKEND_UNAVAILABLE
+PACK_FAILED
+TRANSFER_FAILED
+MISSING_SESSION_ID
+INVALID_SESSION_ID
+LOCAL_TIMEOUT
+CANCELLED
+CONFIG_ERROR
+DOWNLOAD_DIR_UNWRITABLE
+CACHE_DIR_UNWRITABLE
+```
+
+## 16. Doctor 需求
+
+命令：
+
+```bash
+filepilot doctor
+```
+
+MVP 只做 Local Diagnostics，不保证端到端传输一定成功。
+
+检查项：
+
+- FilePilot 版本。
+- 操作系统和架构。
+- 配置文件路径与读取状态。
+- backend 解析路径。
+- backend 是否存在、可执行、能返回版本。
+- cache/log/download 目录是否可创建和写入。
+- 当前工作目录是否可读写。
+- `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 是否存在。
+- DNS 是否疑似 Fake-IP，例如解析到 `198.18.x.x`。
+
+warning 不导致非零退出码：
+
+- 检测到代理环境变量。
+- 疑似 Fake-IP / TUN。
+- 未配置自定义 download_dir 但平台默认目录可用。
+
+fatal 导致非零退出码：
+
+- 找不到可用 backend。
+- backend 不可执行。
+- 必需目录不可写。
+- 配置文件格式错误。
+
+## 17. 配置需求
+
+使用平台规范目录和 `config.toml`。
+
+Linux：
+
+```text
+~/.config/filepilot/config.toml
+~/.cache/filepilot/
+~/.local/state/filepilot/logs/
+```
+
+macOS：
+
+```text
+~/Library/Application Support/FilePilot/config.toml
+~/Library/Caches/FilePilot/
+~/Library/Logs/FilePilot/
+```
+
+Windows：
+
+```text
+%APPDATA%\FilePilot\config.toml
+%LOCALAPPDATA%\FilePilot\Cache\
+%LOCALAPPDATA%\FilePilot\Logs\
+```
+
+环境变量覆盖：
+
+```text
+FILEPILOT_CONFIG
+FILEPILOT_CACHE_DIR
+FILEPILOT_LOG_DIR
+```
+
+MVP 配置字段：
+
+```toml
+backend_path = ""
+download_dir = ""
+auto_unpack = true
+keep_packages = false
+json_output = false
+```
+
+命令：
+
+```bash
+filepilot config show
+filepilot config set backend_path <path>
+filepilot config set download_dir <path>
+filepilot config set auto_unpack true
+filepilot config set keep_packages false
+filepilot config set json_output false
+```
+
+## 18. 日志与历史
+
+传输历史使用 JSONL。
+
+每次 send / receive Transfer Attempt 都记录一行，包括成功、失败和取消。
+
+记录字段：
+
+- timestamp
+- mode
+- status
+- payload_type
+- input_path
+- output_path
+- archive_path 或 package_path
+- file_size
+- packed
+- unpacked
+- backend
+- backend_source
+- session_id_redacted
+- duration_ms
+- error_code
+- error_message
+
+禁止记录：
+
+- 完整 session-id。
+- backend raw command。
+- backend credential。
+- 文件内容。
+
+`doctor` 默认不进入 transfer history；send/receive preflight fatal 则作为对应 Transfer Attempt 记录。
+
+## 19. Clean 需求
+
+命令：
+
+```bash
+filepilot clean
+```
+
+MVP 默认只删除 FilePilot cache 目录下 FilePilot 自己生成、可安全识别的临时文件。
+
+不得删除：
+
+- 下载目录。
+- 用户源目录。
+- 任意 `.tar.gz` 文件。
+- transfer history。
+- 配置文件。
+
+支持：
+
+```bash
+filepilot clean --dry-run
+filepilot clean --older-than 7d
+```
+
+验收要求：删除前必须确认目标路径位于 FilePilot cache 根目录内。
+
+## 20. 模块划分
+
+建议 Go 包结构：
+
+```text
+cmd/filepilot/
+internal/cli/
+internal/config/
+internal/backend/
+internal/backend/croc/
+internal/session/
+internal/package/
+internal/doctor/
+internal/history/
+internal/paths/
+internal/output/
+internal/errors/
+```
+
+关键接口：
+
+```go
+type TransferBackend interface {
+    Name() string
+    Version(ctx context.Context) (string, error)
+    Send(ctx context.Context, req SendRequest) error
+    Receive(ctx context.Context, req ReceiveRequest) error
+}
+```
+
+MVP 可以只实现 CrocBackend，但 CLI、JSON、history 不应依赖 croc 术语。
+
+## 21. 开发顺序
+
+### Stage 0：项目骨架
+
+- 初始化 Go module。
+- 建立 Cobra CLI。
+- 建立平台路径模块。
+- 建立 config.toml 读写。
+- 建立错误码和 JSON output 基础结构。
+
+### Stage 1：本地能力
+
+- 实现 `pack`。
+- 实现 Directory Package manifest。
+- 实现 cache 路径。
+- 实现 `clean --dry-run` 和 `clean`。
+- 实现 history JSONL 写入。
+
+### Stage 2：Backend 基础
+
+- 实现 backend 解析优先级。
+- 接入 Bundled Backend 路径。
+- 实现 CrocBackend version 检查。
+- 实现 `doctor`。
+
+### Stage 3：端到端传输
+
+- 实现 session-id 生成。
+- 实现 `send <file>`。
+- 实现 `send <dir>` 自动打包。
+- 实现 `receive <session-id>`。
+- 实现阻塞发送生命周期。
+- 实现取消和本地超时。
+
+### Stage 4：Agent API 与错误体验
+
+- 固化 `--json` schema。
+- 固化错误码。
+- 确保 JSON 模式无交互。
+- 完善 human-readable 错误和 hint。
+- 完善日志脱敏。
+
+### Stage 5：跨平台打包
+
+- 准备 Windows / Linux / macOS 构建。
+- 将 backend binary 放入安装包约定位置。
+- 编写 README 和使用示例。
+- 编写 Agent 调用示例。
+
+## 22. MVP 验收标准
+
+### 验收 1：文件传输
+
+发送端：
+
+```bash
+filepilot send ./file.zip
+```
+
+接收端：
+
+```bash
+filepilot receive <session-id>
+```
+
+结果：
+
+- 接收端得到 `file.zip`。
+- 不自动解包。
+- 用户没有直接调用 croc。
+- transfer history 记录成功尝试且 session-id 脱敏。
+
+### 验收 2：目录传输
+
+发送端：
+
+```bash
+filepilot send ./results
+```
+
+接收端：
+
+```bash
+filepilot receive <session-id>
+```
+
+结果：
+
+- 发送端自动创建 Directory Package。
+- 接收端识别 manifest。
+- 默认自动解包为 `results/`。
+- 不覆盖已有同名目录。
+
+### 验收 3：Agent JSON
+
+命令：
+
+```bash
+filepilot send ./results --json
+```
+
+结果：
+
+- stdout 只包含 JSON。
+- 包含稳定 `ok/status/mode/session_id/error` 字段。
+- 失败时包含稳定 `error.code` 和 hint。
+
+### 验收 4：JSON 模式禁止交互
+
+命令：
+
+```bash
+filepilot receive --json
+```
+
+结果：
+
+- 不提示输入。
+- 返回 `MISSING_SESSION_ID`。
+- 退出码为参数或 session-id 错误。
+
+### 验收 5：doctor
+
+命令：
+
+```bash
+filepilot doctor
+```
+
+结果：
+
+- 显示平台、配置、backend 来源、目录可写性、代理 warning。
+- backend 缺失时返回 `BACKEND_NOT_FOUND`。
+- 仅有代理 warning 时退出码仍为 0。
+
+### 验收 6：backend 可用性
+
+在没有系统 croc 的机器上安装 FilePilot 后：
+
+```bash
+filepilot doctor
+```
+
+结果：
+
+- 能找到 Bundled Backend。
+- 不要求用户手动安装 croc。
+
+### 验收 7：clean 安全
+
+命令：
+
+```bash
+filepilot clean --dry-run
+filepilot clean
+```
+
+结果：
+
+- 只处理 FilePilot cache 内的 FilePilot-owned 文件。
+- 不删除下载目录、源目录、history 或任意用户归档。
+
+## 23. 后续阶段
+
+后续可做，但不属于 Public MVP：
+
+- `--json-stream` 实时事件流。
+- 精确进度百分比和速率。
+- `history` 查询命令。
+- `--detach` 后台传输。
+- GUI。
+- 自建 rendezvous / relay 服务。
+- NativeRelayBackend。
+- 局域网直连优先，失败后 relay。
+- 断点续传。
+- 增量同步。
+- Agent 自动触发传输的高级工作流。
+
+## 24. 简历表述
+
+可描述为：
+
+```text
+FilePilot：开发面向开发者、实验服务器与 Agent 工作流的跨平台文件传输 CLI 工具，基于可替换 TransferBackend 抽象封装 croc-compatible relay-assisted 传输能力，实现 FilePilot Session ID、目录自动打包与 manifest、双端 send/receive 工作流、backend 内置分发、网络与本机诊断、日志脱敏、稳定错误码和 Agent-friendly JSON API，提升复杂网络环境下服务器与本地主机之间文件传输的自动化能力和可用性。
+```
+
+技术栈：
+
+```text
+Go, Cobra, Linux CLI, Cross-platform CLI, File Transfer, Relay-assisted Transfer, Subprocess, tar/gzip, TOML, JSONL, Network Diagnostics
+```
