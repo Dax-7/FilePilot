@@ -13,7 +13,7 @@ import (
 
 func TestRunReportsBackendAndWritableDirectories(t *testing.T) {
 	root := t.TempDir()
-	backendPath := filepath.Join(root, "transfer-engine.cmd")
+	backendPath := filepath.Join(root, "transfer-engine"+scriptExt())
 	writeDoctorExecutable(t, backendPath, "FilePilot test backend 1.0")
 
 	report := Run(Request{
@@ -113,7 +113,7 @@ func scriptExt() string {
 
 func TestRunProxyWarningsDoNotBecomeFatal(t *testing.T) {
 	root := t.TempDir()
-	backendPath := filepath.Join(root, "transfer-engine.cmd")
+	backendPath := filepath.Join(root, "transfer-engine"+scriptExt())
 	writeDoctorExecutable(t, backendPath, "FilePilot test backend 1.0")
 
 	report := Run(Request{

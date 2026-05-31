@@ -69,7 +69,7 @@ func TestReceiveHelpUsesCanonicalCommand(t *testing.T) {
 func TestMVPCommandsAcceptGlobalFlags(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.toml")
-	backendPath := filepath.Join(root, "transfer-engine.cmd")
+	backendPath := filepath.Join(root, "transfer-engine"+scriptExt())
 	globalPayloadPath := filepath.Join(root, "payloads", "global.txt")
 	if err := os.MkdirAll(filepath.Dir(globalPayloadPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll returned error: %v", err)
@@ -1194,7 +1194,7 @@ func TestPackCommandSupportsOutputPathAndJSON(t *testing.T) {
 
 func TestDoctorReportsConfiguredBackendHuman(t *testing.T) {
 	root := t.TempDir()
-	backendPath := filepath.Join(root, "transfer-engine.cmd")
+	backendPath := filepath.Join(root, "transfer-engine"+scriptExt())
 	writeDoctorBackend(t, backendPath, "FilePilot test backend 1.0")
 	t.Setenv("FILEPILOT_CONFIG", filepath.Join(root, "config.toml"))
 	t.Setenv("FILEPILOT_CACHE_DIR", filepath.Join(root, "cache"))
@@ -1243,7 +1243,7 @@ func TestDoctorJsonMissingBackendReturnsStructuredFatal(t *testing.T) {
 
 func TestDoctorJsonProxyWarningDoesNotFail(t *testing.T) {
 	root := t.TempDir()
-	backendPath := filepath.Join(root, "transfer-engine.cmd")
+	backendPath := filepath.Join(root, "transfer-engine"+scriptExt())
 	writeDoctorBackend(t, backendPath, "FilePilot test backend 1.0")
 	t.Setenv("FILEPILOT_CONFIG", filepath.Join(root, "config.toml"))
 	t.Setenv("FILEPILOT_CACHE_DIR", filepath.Join(root, "cache"))
