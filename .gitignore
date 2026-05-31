@@ -1,0 +1,27 @@
+# Go build and test cache
+.gocache/
+coverage.out
+*.test
+
+# Local build outputs
+bin/
+build/
+dist/
+release/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# FilePilot local transfer/package artifacts
+*.tar.gz
+internal/cli/FP-*/
+
+# Editor, OS, and local environment noise
+.vscode/
+.idea/
+*.swp
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
