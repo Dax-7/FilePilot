@@ -1463,7 +1463,8 @@ func extractSessionID(t *testing.T, output string) string {
 
 func extractSentPath(t *testing.T, backendInvocation string) string {
 	t.Helper()
-	fields := strings.Fields(strings.TrimSpace(backendInvocation))
+	lines := strings.Split(strings.TrimSpace(backendInvocation), "\n")
+	fields := strings.Fields(strings.TrimSpace(lines[0]))
 	if len(fields) == 0 {
 		t.Fatalf("backend invocation was empty")
 	}
