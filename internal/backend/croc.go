@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -26,7 +27,13 @@ func (b CrocBackend) Version(ctx context.Context) (string, error) {
 }
 
 func (b CrocBackend) Send(ctx context.Context, req SendRequest) error {
-	output, err := runBackendCommand(ctx, b.path, "--ignore-stdin", "send", "--code", req.SessionID, req.InputPath)
+	args := []string{"--ignore-stdin", "send", req.InputPath}
+	env := []string{"CROC_SECRET=" + req.SessionID}
+	if runtime.GOOS == "windows" {
+		args = []string{"--ignore-stdin", "send", "--code", req.SessionID, req.InputPath}
+		env = nil
+	}
+	output, err := runBackendCommand(ctx, b.path, env, args...)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -37,7 +44,7 @@ func (b CrocBackend) Send(ctx context.Context, req SendRequest) error {
 }
 
 func (b CrocBackend) Receive(ctx context.Context, req ReceiveRequest) error {
-	output, err := runBackendCommand(ctx, b.path, "--ignore-stdin", "--yes", "--out", req.OutputDir, req.SessionID)
+	output, err := runBackendCommand(ctx, b.path, nil, "--ignore-stdin", "--yes", "--out", req.OutputDir, req.SessionID)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -47,7 +54,7 @@ func (b CrocBackend) Receive(ctx context.Context, req ReceiveRequest) error {
 	return nil
 }
 
-func runBackendCommand(ctx context.Context, path string, args ...string) ([]byte, error) {
+func runBackendCommand(ctx context.Context, path string, env []string, args ...string) ([]byte, error) {
 	outputFile, err := os.CreateTemp("", "filepilot-backend-output-*")
 	if err != nil {
 		return nil, err
@@ -56,6 +63,9 @@ func runBackendCommand(ctx context.Context, path string, args ...string) ([]byte
 	defer os.Remove(outputPath)
 
 	cmd := exec.CommandContext(ctx, path, args...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	cmd.Stdout = outputFile
 	cmd.Stderr = outputFile
 	err = cmd.Run()

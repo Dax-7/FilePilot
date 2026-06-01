@@ -258,7 +258,16 @@ func TestSendFileInvokesBackendAndRecordsRedactedHistory(t *testing.T) {
 		t.Fatalf("ReadFile backend log returned error: %v", err)
 	}
 	backendInvocation := string(rawBackendLog)
-	for _, want := range []string{"--ignore-stdin", "send", "--code", sessionID, sourcePath} {
+	wantInvocation := []string{"--ignore-stdin", "send", sourcePath}
+	if runtime.GOOS == "windows" {
+		wantInvocation = append(wantInvocation, "--code", sessionID)
+	} else {
+		wantInvocation = append(wantInvocation, "CROC_SECRET="+sessionID)
+		if strings.Contains(backendInvocation, "--code") {
+			t.Fatalf("Unix send should use CROC_SECRET instead of --code; got %q", backendInvocation)
+		}
+	}
+	for _, want := range wantInvocation {
 		if !strings.Contains(backendInvocation, want) {
 			t.Fatalf("backend invocation missing %q; got %q", want, backendInvocation)
 		}
@@ -1332,6 +1341,7 @@ func writeSendBackend(t *testing.T, path string, logPath string, exitCode int) {
 			"#!/bin/sh",
 			`if [ "$1" = "--version" ]; then echo "FilePilot fake backend 1.0"; exit 0; fi`,
 			`printf '%s\n' "$*" >> "` + logPath + `"`,
+			`printf 'CROC_SECRET=%s\n' "$CROC_SECRET" >> "` + logPath + `"`,
 			fmt.Sprintf("exit %d", exitCode),
 			"",
 		}, "\n")
