@@ -393,7 +393,11 @@ func transferErrorFor(mode string, err error) *fperrors.Error {
 	if errors.Is(err, context.Canceled) {
 		return fperrors.New(fperrors.Cancelled, fmt.Sprintf("FilePilot %s was cancelled.", mode), "Retry when you are ready to transfer again.")
 	}
-	return fperrors.New(fperrors.TransferFailed, fmt.Sprintf("FilePilot %s failed before the transfer completed.", mode), "Check the session ID, backend availability, and network access.")
+	message := fmt.Sprintf("FilePilot %s failed before the transfer completed.", mode)
+	if err != nil && err.Error() != "" {
+		message = fmt.Sprintf("%s Backend reported: %s", message, err.Error())
+	}
+	return fperrors.New(fperrors.TransferFailed, message, "Check the session ID, backend availability, and network access.")
 }
 
 func historyStatusFor(err *fperrors.Error) string {

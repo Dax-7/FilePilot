@@ -258,7 +258,7 @@ func TestSendFileInvokesBackendAndRecordsRedactedHistory(t *testing.T) {
 		t.Fatalf("ReadFile backend log returned error: %v", err)
 	}
 	backendInvocation := string(rawBackendLog)
-	for _, want := range []string{"send", "--code", sessionID, sourcePath} {
+	for _, want := range []string{"--ignore-stdin", "send", "--code", sessionID, sourcePath} {
 		if !strings.Contains(backendInvocation, want) {
 			t.Fatalf("backend invocation missing %q; got %q", want, backendInvocation)
 		}
@@ -641,7 +641,7 @@ func TestReceiveFileInvokesBackendSavesPayloadAndRecordsRedactedHistory(t *testi
 		t.Fatalf("ReadFile backend log returned error: %v", err)
 	}
 	backendInvocation := string(rawBackendLog)
-	for _, want := range []string{"--yes", "--out", downloadDir, sessionID} {
+	for _, want := range []string{"--ignore-stdin", "--yes", "--out", downloadDir, sessionID} {
 		if !strings.Contains(backendInvocation, want) {
 			t.Fatalf("backend invocation missing %q; got %q", want, backendInvocation)
 		}
@@ -1350,9 +1350,9 @@ func writeReceiveBackend(t *testing.T, path string, logPath string, payloadPath 
 			"@echo off",
 			`if "%1"=="--version" echo FilePilot fake backend 1.0& exit /b 0`,
 			`echo %*>>"` + logPath + `"`,
-			`if not "%1"=="--yes" exit /b ` + fmt.Sprintf("%d", exitCode),
-			`if not exist "%3" mkdir "%3"`,
-			`copy /Y "` + payloadPath + `" "%3\` + payloadName + `" >nul`,
+			`if not "%2"=="--yes" exit /b ` + fmt.Sprintf("%d", exitCode),
+			`if not exist "%4" mkdir "%4"`,
+			`copy /Y "` + payloadPath + `" "%4\` + payloadName + `" >nul`,
 			fmt.Sprintf("exit /b %d", exitCode),
 			"",
 		}, "\r\n")
@@ -1361,9 +1361,9 @@ func writeReceiveBackend(t *testing.T, path string, logPath string, payloadPath 
 			"#!/bin/sh",
 			`if [ "$1" = "--version" ]; then echo "FilePilot fake backend 1.0"; exit 0; fi`,
 			`printf '%s\n' "$*" >> "` + logPath + `"`,
-			`if [ "$1" != "--yes" ]; then exit ` + fmt.Sprintf("%d", exitCode) + `; fi`,
-			`mkdir -p "$3"`,
-			`cp "` + payloadPath + `" "$3/` + payloadName + `"`,
+			`if [ "$2" != "--yes" ]; then exit ` + fmt.Sprintf("%d", exitCode) + `; fi`,
+			`mkdir -p "$4"`,
+			`cp "` + payloadPath + `" "$4/` + payloadName + `"`,
 			fmt.Sprintf("exit %d", exitCode),
 			"",
 		}, "\n")
