@@ -5,25 +5,28 @@ FilePilot resolves a bundled transfer backend from a directory next to the FileP
 ```text
 <install-dir>/
   filepilot[.exe]
+  fp[.exe]
   backend/
     linux-amd64/
-      filepilot-backend
+      filepilot
     linux-arm64/
-      filepilot-backend
+      filepilot
     darwin-amd64/
-      filepilot-backend
+      filepilot
     darwin-arm64/
-      filepilot-backend
+      filepilot
     windows-amd64/
-      filepilot-backend.exe
+      filepilot.exe
 ```
 
-The resolver also accepts platform-native script or batch extensions during tests. Release artifacts should prefer `filepilot-backend` on Unix-like platforms and `filepilot-backend.exe` on Windows.
+Release artifacts may bundle either a FilePilot-compatible transfer backend named `filepilot[.exe]` or a croc-compatible backend named `croc[.exe]`. The resolver derives the executable suffix from the runtime platform instead of hard-coding Windows paths into callers.
+
+`filepilot` is the canonical executable name. Release artifacts should also provide `fp` as a short executable name that invokes the same CLI and command surface.
 
 Resolution order remains:
 
 1. `backend_path` from config.
-2. Bundled backend at `backend/<goos>-<goarch>/filepilot-backend`.
+2. Bundled backend at `backend/<goos>-<goarch>/filepilot[.exe]` or `backend/<goos>-<goarch>/croc[.exe]`.
 3. Compatible backend from system `PATH`.
 4. `BACKEND_NOT_FOUND`.
 

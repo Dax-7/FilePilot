@@ -8,6 +8,18 @@ FilePilot is a cross-platform file transfer orchestration tool for developer mac
 A tool that orchestrates file transfer sessions across two endpoints without requiring direct IP reachability between them.
 _Avoid_: croc wrapper, file transfer protocol, cloud drive
 
+**Canonical Command Name**:
+The primary CLI executable name and command spelling used in product documentation, help text, examples, and stable user guidance.
+_Avoid_: shorthand, shell alias
+
+**Short Executable Name**:
+A convenience executable entrypoint that invokes the same FilePilot CLI while preserving the Canonical Command Name in documentation and help text.
+_Avoid_: separate CLI, renamed product, command alias
+
+**Desktop GUI**:
+A single-window FilePilot application for human send and receive workflows that uses the same transfer concepts as the CLI without becoming a separate product or role-specific app.
+_Avoid_: server app, client app, account console
+
 **Transfer Session**:
 A short-lived pairing between one sender and one receiver for transferring one file payload or one packaged directory payload.
 _Avoid_: job, upload, sync task
@@ -60,6 +72,18 @@ _Avoid_: default product identity, only possible backend
 A supported backend-compatible executable shipped with the FilePilot installation and invoked internally by FilePilot.
 _Avoid_: user-installed dependency, runtime download, system package
 
+**Release Packaging Design**:
+The documented layout and policy for building FilePilot release packages, including executable entrypoints, bundled backend placement, notices, and checksum expectations.
+_Avoid_: published release, tested artifact, installer behavior
+
+**MVP Hardening Plan**:
+The working document for MVP Hardening Stage, including the Required Stability Gate, Recommended Stability Evidence, Regression Boundary Tests, and execution record template.
+_Avoid_: glossary, user README, release artifact policy
+
+**Release Artifact**:
+A concrete FilePilot package built for users after the Required Stability Gate has passed and human-reviewed backend, license, checksum, and package-content decisions are complete.
+_Avoid_: local build, packaging design, smoke-test fixture
+
 **Rendezvous Control Layer**:
 A lightweight coordination service that stores short-lived Transfer Session metadata and Backend Credentials, but never stores file contents.
 _Avoid_: relay, file server, cloud storage
@@ -75,6 +99,10 @@ _Avoid_: rendezvous service, session service
 **Public MVP**:
 The first externally demonstrable version of FilePilot, where users interact only with FilePilot Session IDs and do not need to copy Backend Credentials.
 _Avoid_: Phase 1 prototype
+
+**MVP Hardening Stage**:
+The post-MVP engineering stage that validates the implemented Public MVP against real transfer scenarios, error boundaries, command ergonomics, documentation accuracy, and release prerequisites before calling it release-ready.
+_Avoid_: new feature phase, packaged release, protocol redesign
 
 **Internal Validation Stage**:
 An engineering-only milestone used to validate packaging, diagnostics, logging, and backend invocation before the Public MVP boundary is reached.
@@ -100,6 +128,22 @@ _Avoid_: session discovery, automatic nearby session list
 Checks that describe whether the current machine is ready to run FilePilot and its configured Transfer Backend.
 _Avoid_: end-to-end guarantee, network certification
 
+**Live Stability Matrix**:
+A recorded set of real cross-machine transfer scenarios used during MVP Hardening Stage to show that the implemented Public MVP works in representative environments.
+_Avoid_: unit test suite, theoretical coverage, release artifact
+
+**Required Stability Gate**:
+The minimum subset of the Live Stability Matrix that must pass before the Public MVP can be considered ready for release packaging.
+_Avoid_: exhaustive compatibility certification, optional smoke test
+
+**Recommended Stability Evidence**:
+Additional live scenarios that increase confidence in the Public MVP but do not block release packaging when the Required Stability Gate has passed.
+_Avoid_: release blocker, new feature requirement
+
+**Regression Boundary Tests**:
+Automated tests that protect stable FilePilot behavior, especially error codes, Agent API output, local diagnostics, path handling, timeout, cancellation, and backend resolution.
+_Avoid_: live transfer proof, manual checklist
+
 **Advanced Self-Hosted Services**:
 Optional user-managed rendezvous or relay services configured for controlled environments, not required for the default MVP experience.
 _Avoid_: default path, required deployment
@@ -108,6 +152,24 @@ _Avoid_: default path, required deployment
 
 **MVP vs. Phase 1 prototype**:
 Resolved: the Public MVP must include FilePilot Session IDs backed by the selected backend's rendezvous capability, without exposing raw backend receive commands. A stage that exposes backend receive commands is only an Internal Validation Stage.
+
+**MVP vs. MVP Hardening Stage**:
+Resolved: after the core Public MVP flow works across Linux and Windows, the next stage is MVP Hardening Stage rather than a new feature phase. Its purpose is to gather repeatable stability evidence, verify error boundaries, align CLI and documentation, and prepare release packaging inputs.
+
+**README role after MVP implementation**:
+Resolved: once the core Public MVP flow is runnable, README should describe the current MVP user workflow and mark release hardening status. It should no longer describe the repository as merely being at the requirements and planning stage.
+
+**Release packaging timing**:
+Resolved: Release Packaging Design may proceed during MVP Hardening Stage, but Release Artifacts should be produced only after the Required Stability Gate passes and human-reviewed backend source, license, checksum, and final package contents are complete.
+
+**MVP hardening plan location**:
+Resolved: `docs/mvp-hardening-plan.md` is the main working document for MVP Hardening Stage. README remains user-facing, CONTEXT.md remains terminology and boundary-focused, and `docs/release-bundled-backend.md` remains release packaging policy.
+
+**MVP hardening evidence**:
+Resolved: MVP Hardening Stage requires both a Live Stability Matrix and Regression Boundary Tests. The Live Stability Matrix is release evidence for real environments; Regression Boundary Tests are the guardrail against behavior regressions.
+
+**Live stability matrix release gate**:
+Resolved: the Live Stability Matrix is split into Required Stability Gate and Recommended Stability Evidence. The Required Stability Gate is the minimum live-transfer evidence needed before release packaging; Recommended Stability Evidence may be collected to improve confidence but should not automatically block MVP release packaging.
 
 **MVP rendezvous ownership**:
 Resolved: the Public MVP does not provide an official hosted FilePilot rendezvous service and does not require users to deploy a separate service. The default MVP path reuses Backend Rendezvous and Relay capabilities from the selected Transfer Backend.
@@ -136,6 +198,9 @@ Resolved: `filepilot clean` only removes FilePilot-owned temporary files under F
 **Public MVP command boundary**:
 Resolved: the Public MVP includes `send`, `receive`, `pack`, `doctor`, `clean`, `config show`, and `config set`. It excludes `history`, `serve`, `daemon`, `gui`, `sync`, `resume`, and `login`.
 
+**Desktop GUI boundary after Public MVP**:
+Resolved: Desktop GUI work is a follow-on human interface over the existing send and receive transfer concepts. It must not replace or rename the CLI, introduce separate server/client applications, or add account, discovery, queue, sync, resume, or history workflows by default.
+
 **MVP progress reporting**:
 Resolved: the Public MVP requires stable Transfer States and final structured results, not precise percentages or real-time transfer speeds parsed from backend output.
 
@@ -158,7 +223,10 @@ Resolved: because the default Public MVP path does not use a FilePilot-hosted re
 Resolved: `filepilot receive` may prompt a human for a FilePilot Session ID, but it does not discover or list available sessions. Agent API mode must not prompt; `filepilot receive --json` without a session ID returns a structured error.
 
 **Receive command naming**:
-Resolved: the canonical receive command is `filepilot receive`. Short aliases such as `recv` are not part of the Public MVP requirement.
+Resolved: the canonical receive command is `filepilot receive`. Short subcommand aliases such as `recv` are not part of the Public MVP requirement.
+
+**Short executable naming**:
+Resolved: Public MVP release packaging should provide `fp` as a Short Executable Name for convenience while keeping `filepilot` as the Canonical Command Name. The short executable invokes the same command surface and does not introduce separate product language.
 
 **MVP doctor boundary**:
 Resolved: `filepilot doctor` performs Local Diagnostics only. Warnings such as proxy variables or suspected Fake-IP do not cause a non-zero exit code; fatal local blockers such as a missing backend or unwritable required directory do.

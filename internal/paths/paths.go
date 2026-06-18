@@ -15,11 +15,19 @@ type Paths struct {
 }
 
 func Current() (Paths, error) {
-	return Resolve(runtime.GOOS, os.Getenv)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	return ResolveWithHome(runtime.GOOS, os.Getenv, home)
 }
 
 func Resolve(goos string, getenv func(string) string) (Paths, error) {
-	paths, err := defaults(goos, getenv)
+	return ResolveWithHome(goos, getenv, "")
+}
+
+func ResolveWithHome(goos string, getenv func(string) string, userHome string) (Paths, error) {
+	paths, err := defaults(goos, getenv, userHome)
 	if err != nil {
 		return Paths{}, err
 	}
@@ -37,12 +45,12 @@ func Resolve(goos string, getenv func(string) string) (Paths, error) {
 	return paths, nil
 }
 
-func defaults(goos string, getenv func(string) string) (Paths, error) {
+func defaults(goos string, getenv func(string) string, userHome string) (Paths, error) {
 	switch goos {
 	case "windows":
 		appData := first(getenv("APPDATA"), filepath.Join(getenv("USERPROFILE"), "AppData", "Roaming"))
 		localAppData := first(getenv("LOCALAPPDATA"), filepath.Join(getenv("USERPROFILE"), "AppData", "Local"))
-		userProfile := getenv("USERPROFILE")
+		userProfile := first(userHome, getenv("USERPROFILE"))
 		if appData == "" || localAppData == "" || userProfile == "" {
 			return Paths{}, errors.New("missing Windows profile environment")
 		}
@@ -53,7 +61,7 @@ func defaults(goos string, getenv func(string) string) (Paths, error) {
 			DownloadDir: filepath.Join(userProfile, "Downloads", "FilePilot"),
 		}, nil
 	case "darwin":
-		home := getenv("HOME")
+		home := first(userHome, getenv("HOME"))
 		if home == "" {
 			return Paths{}, errors.New("missing HOME environment")
 		}
@@ -64,7 +72,7 @@ func defaults(goos string, getenv func(string) string) (Paths, error) {
 			DownloadDir: filepath.Join(home, "Downloads", "FilePilot"),
 		}, nil
 	default:
-		home := getenv("HOME")
+		home := first(userHome, getenv("HOME"))
 		if home == "" {
 			return Paths{}, errors.New("missing HOME environment")
 		}

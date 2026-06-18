@@ -1,12 +1,8 @@
 package cli
 
 import (
-	"archive/tar"
 	"bufio"
-	"compress/gzip"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +20,7 @@ import (
 	"filepilot/internal/output"
 	"filepilot/internal/packaging"
 	"filepilot/internal/paths"
-	"filepilot/internal/session"
+	"filepilot/internal/transfer"
 )
 
 const (
@@ -190,72 +186,27 @@ func runSend(args []string, opts globalOptions, stdout io.Writer, stderr io.Writ
 	if fpErr != nil {
 		return writeError(opts, stdout, stderr, "send", fpErr)
 	}
-	payload, fpErr := prepareSendPayload(sourcePath, state)
-	if fpErr != nil {
-		return writeError(opts, stdout, stderr, "send", fpErr)
-	}
-	defer cleanupSendPayload(payload, state.Config.Values.KeepPackages)
 
-	executable, _ := os.Executable()
-	resolved, fpErr := backend.Resolve(backend.ResolveRequest{
-		ConfiguredPath: state.Config.Values.BackendPath,
-		BundledDir:     backend.DefaultBundledDir(executable),
-		PathDirs:       backend.PathDirsFromEnv(os.Getenv("PATH")),
-	})
-	if fpErr != nil {
-		return writeError(opts, stdout, stderr, "send", fpErr)
-	}
-
-	sessionID, err := session.Generate()
-	if err != nil {
-		fpErr := fperrors.New(fperrors.ConfigError, err.Error(), "Retry the command.")
-		return writeError(opts, stdout, stderr, "send", fpErr)
-	}
-
-	transferBackend := backend.NewCrocBackend(resolved.Path)
 	ctx, cancel := transferContext(transferOpts.Timeout)
 	defer cancel()
-	started := time.Now()
-	if !opts.quiet && !opts.json {
-		fmt.Fprintln(stdout, "FilePilot send is ready.")
-		fmt.Fprintf(stdout, "Receiver command: filepilot receive %s\n", sessionID)
-		fmt.Fprintln(stdout, "Waiting for receiver...")
-	}
-
-	err = transferBackend.Send(ctx, backend.SendRequest{
-		InputPath: payload.SendPath,
-		SessionID: sessionID,
+	result, fpErr := transfer.Send(ctx, transfer.SendOptions{
+		SourcePath: sourcePath,
+		OnEvent: func(event transfer.Event) {
+			if opts.quiet || opts.json {
+				return
+			}
+			if event.Type == transfer.EventWaiting {
+				fmt.Fprintln(stdout, "FilePilot send is ready.")
+				fmt.Fprintf(stdout, "Receiver command: filepilot receive %s\n", event.SessionID)
+				fmt.Fprintln(stdout, "Waiting for receiver...")
+			}
+		},
 	})
-	duration := time.Since(started)
-	attempt := history.Attempt{
-		Mode:          "send",
-		Status:        "completed",
-		PayloadType:   payload.PayloadType,
-		InputPath:     sourcePath,
-		PackagePath:   payload.PackagePath,
-		FileSize:      payload.FileSize,
-		Packed:        payload.Packed,
-		Unpacked:      false,
-		Backend:       transferBackend.Name(),
-		BackendSource: string(resolved.Source),
-		SessionID:     sessionID,
-		Duration:      duration,
-	}
-	if err != nil {
-		fpErr = transferErrorFor("send", err)
-		attempt.Status = historyStatusFor(fpErr)
-		attempt.ErrorCode = string(fpErr.Code)
-		attempt.ErrorMessage = fpErr.Message
-		_ = history.NewWriter(history.DefaultPath(state.Paths.LogDir)).Append(attempt)
+	if fpErr != nil {
 		return writeError(opts, stdout, stderr, "send", fpErr)
 	}
-	if historyErr := history.NewWriter(history.DefaultPath(state.Paths.LogDir)).Append(attempt); historyErr != nil {
-		fpErr = fperrors.New(fperrors.ConfigError, historyErr.Error(), "Check that the FilePilot log directory is writable.")
-		return writeError(opts, stdout, stderr, "send", fpErr)
-	}
-
 	if opts.json {
-		return writeSendJSON(stdout, sessionID, attempt, resolved)
+		return writeSendJSON(stdout, result.SessionID, result.Attempt, result.Backend)
 	}
 	if !opts.quiet {
 		fmt.Fprintln(stdout, "FilePilot send completed.")
@@ -298,63 +249,6 @@ func parseSendArgs(args []string) (string, transferOptions, *fperrors.Error) {
 	return filepath.Clean(sourcePath), opts, nil
 }
 
-type sendPayload struct {
-	PayloadType string
-	SendPath    string
-	PackagePath string
-	FileSize    int64
-	Packed      bool
-}
-
-func prepareSendPayload(sourcePath string, state configState) (sendPayload, *fperrors.Error) {
-	info, err := os.Stat(sourcePath)
-	if os.IsNotExist(err) {
-		return sendPayload{}, fperrors.New(fperrors.PathNotFound, "Source path does not exist.", "Check the path and run filepilot send <path> again.")
-	}
-	if err != nil {
-		return sendPayload{}, fperrors.New(fperrors.PermissionDenied, "Source path is not accessible.", "Check file permissions.")
-	}
-	if info.IsDir() {
-		packagePath := defaultPackagePath(state.Paths.CacheDir, sourcePath)
-		result, err := packaging.CreateDirectoryPackage(packaging.Request{
-			SourceDir:  sourcePath,
-			OutputPath: packagePath,
-		})
-		if err != nil {
-			return sendPayload{}, fperrors.New(fperrors.PackFailed, err.Error(), "Check that the source directory is readable and the FilePilot cache directory is writable.")
-		}
-		packageInfo, err := os.Stat(result.PackagePath)
-		if err != nil {
-			return sendPayload{}, fperrors.New(fperrors.PackFailed, err.Error(), "Check that the FilePilot package was created in the cache directory.")
-		}
-		return sendPayload{
-			PayloadType: packaging.PayloadTypeDirectoryPackage,
-			SendPath:    result.PackagePath,
-			PackagePath: result.PackagePath,
-			FileSize:    packageInfo.Size(),
-			Packed:      true,
-		}, nil
-	}
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		return sendPayload{}, fperrors.New(fperrors.PermissionDenied, "Source file is not readable.", "Check file permissions.")
-	}
-	_ = file.Close()
-	return sendPayload{
-		PayloadType: "file",
-		SendPath:    sourcePath,
-		FileSize:    info.Size(),
-		Packed:      false,
-	}, nil
-}
-
-func cleanupSendPayload(payload sendPayload, keepPackages bool) {
-	if !payload.Packed || keepPackages || payload.PackagePath == "" {
-		return
-	}
-	_ = os.Remove(payload.PackagePath)
-}
-
 func writeSendJSON(stdout io.Writer, sessionID string, attempt history.Attempt, resolved backend.Resolved) int {
 	fields := map[string]any{
 		"session_id":          sessionID,
@@ -386,34 +280,6 @@ func transferContext(timeout time.Duration) (context.Context, context.CancelFunc
 	return base, stop
 }
 
-func transferErrorFor(mode string, err error) *fperrors.Error {
-	if errors.Is(err, context.DeadlineExceeded) {
-		return fperrors.New(fperrors.LocalTimeout, fmt.Sprintf("FilePilot %s reached the local timeout.", mode), "Increase --timeout or retry when the receiver is ready.")
-	}
-	if errors.Is(err, context.Canceled) {
-		return fperrors.New(fperrors.Cancelled, fmt.Sprintf("FilePilot %s was cancelled.", mode), "Retry when you are ready to transfer again.")
-	}
-	message := fmt.Sprintf("FilePilot %s failed before the transfer completed.", mode)
-	if err != nil && err.Error() != "" {
-		message = fmt.Sprintf("%s Backend reported: %s", message, err.Error())
-	}
-	return fperrors.New(fperrors.TransferFailed, message, "Check the session ID, backend availability, and network access.")
-}
-
-func historyStatusFor(err *fperrors.Error) string {
-	if err == nil {
-		return "completed"
-	}
-	switch err.Code {
-	case fperrors.LocalTimeout:
-		return "timeout"
-	case fperrors.Cancelled:
-		return "cancelled"
-	default:
-		return "failed"
-	}
-}
-
 func runReceive(args []string, opts globalOptions, stdout io.Writer, stderr io.Writer) int {
 	state, fpErr := loadConfigState()
 	if fpErr != nil {
@@ -425,89 +291,26 @@ func runReceive(args []string, opts globalOptions, stdout io.Writer, stderr io.W
 	if fpErr != nil {
 		return writeError(opts, stdout, stderr, "receive", fpErr)
 	}
-	if err := session.Validate(sessionID); err != nil {
-		fpErr := fperrors.New(fperrors.InvalidSessionID, err.Error(), "Use the FilePilot Session ID shown by the sender.")
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
-	if err := os.MkdirAll(state.Paths.DownloadDir, 0o755); err != nil {
-		fpErr := fperrors.New(fperrors.DownloadDirUnwritable, err.Error(), "Choose a writable download_dir in FilePilot config.")
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
-	before, err := snapshotDownloadDir(state.Paths.DownloadDir)
-	if err != nil {
-		fpErr := fperrors.New(fperrors.DownloadDirUnwritable, err.Error(), "Check that the FilePilot download directory is readable.")
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
 
-	executable, _ := os.Executable()
-	resolved, fpErr := backend.Resolve(backend.ResolveRequest{
-		ConfiguredPath: state.Config.Values.BackendPath,
-		BundledDir:     backend.DefaultBundledDir(executable),
-		PathDirs:       backend.PathDirsFromEnv(os.Getenv("PATH")),
-	})
-	if fpErr != nil {
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
-
-	transferBackend := backend.NewCrocBackend(resolved.Path)
 	ctx, cancel := transferContext(transferOpts.Timeout)
 	defer cancel()
-	started := time.Now()
-	if !opts.quiet && !opts.json {
-		fmt.Fprintln(stdout, "FilePilot receive is ready.")
-	}
-	err = transferBackend.Receive(ctx, backend.ReceiveRequest{
+	result, fpErr := transfer.Receive(ctx, transfer.ReceiveOptions{
 		SessionID: sessionID,
-		OutputDir: state.Paths.DownloadDir,
+		OnEvent: func(event transfer.Event) {
+			if !opts.quiet && !opts.json && event.Type == transfer.EventTransferring {
+				fmt.Fprintln(stdout, "FilePilot receive is ready.")
+			}
+		},
 	})
-	duration := time.Since(started)
-	if err != nil {
-		fpErr = transferErrorFor("receive", err)
-		attempt := history.Attempt{
-			Mode:          "receive",
-			Status:        historyStatusFor(fpErr),
-			PayloadType:   "unknown",
-			OutputPath:    state.Paths.DownloadDir,
-			Backend:       transferBackend.Name(),
-			BackendSource: string(resolved.Source),
-			SessionID:     sessionID,
-			Duration:      duration,
-			ErrorCode:     string(fpErr.Code),
-			ErrorMessage:  fpErr.Message,
-		}
-		_ = history.NewWriter(history.DefaultPath(state.Paths.LogDir)).Append(attempt)
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
-
-	received, fpErr := summarizeReceivedPayload(state.Paths.DownloadDir, before, state.Config.Values.AutoUnpack)
 	if fpErr != nil {
 		return writeError(opts, stdout, stderr, "receive", fpErr)
 	}
-	attempt := history.Attempt{
-		Mode:          "receive",
-		Status:        "completed",
-		PayloadType:   received.PayloadType,
-		OutputPath:    received.OutputPath,
-		PackagePath:   received.PackagePath,
-		FileSize:      received.FileSize,
-		Packed:        false,
-		Unpacked:      received.Unpacked,
-		Backend:       transferBackend.Name(),
-		BackendSource: string(resolved.Source),
-		SessionID:     sessionID,
-		Duration:      duration,
-	}
-	if historyErr := history.NewWriter(history.DefaultPath(state.Paths.LogDir)).Append(attempt); historyErr != nil {
-		fpErr = fperrors.New(fperrors.ConfigError, historyErr.Error(), "Check that the FilePilot log directory is writable.")
-		return writeError(opts, stdout, stderr, "receive", fpErr)
-	}
-
 	if opts.json {
-		return writeReceiveJSON(stdout, sessionID, attempt, resolved)
+		return writeReceiveJSON(stdout, sessionID, result.Attempt, result.Backend)
 	}
 	if !opts.quiet {
 		fmt.Fprintln(stdout, "FilePilot receive completed.")
-		fmt.Fprintf(stdout, "Saved: %s\n", received.OutputPath)
+		fmt.Fprintf(stdout, "Saved: %s\n", result.Attempt.OutputPath)
 	}
 	return exitOK
 }
@@ -552,219 +355,6 @@ func parseReceiveArgs(args []string, opts globalOptions, stderr io.Writer) (stri
 		}
 	}
 	return sessionID, transferOpts, nil
-}
-
-type receivedPayload struct {
-	PayloadType string
-	OutputPath  string
-	PackagePath string
-	FileSize    int64
-	Unpacked    bool
-}
-
-func snapshotDownloadDir(downloadDir string) (map[string]bool, error) {
-	entries, err := os.ReadDir(downloadDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]bool{}, nil
-		}
-		return nil, err
-	}
-	snapshot := make(map[string]bool, len(entries))
-	for _, entry := range entries {
-		snapshot[entry.Name()] = true
-	}
-	return snapshot, nil
-}
-
-func summarizeReceivedPayload(downloadDir string, before map[string]bool, autoUnpack bool) (receivedPayload, *fperrors.Error) {
-	entries, err := os.ReadDir(downloadDir)
-	if err != nil {
-		return receivedPayload{}, fperrors.New(fperrors.DownloadDirUnwritable, err.Error(), "Check that the FilePilot download directory is readable.")
-	}
-	var newPaths []string
-	for _, entry := range entries {
-		if before[entry.Name()] {
-			continue
-		}
-		newPaths = append(newPaths, filepath.Join(downloadDir, entry.Name()))
-	}
-	if len(newPaths) == 0 {
-		return receivedPayload{}, fperrors.New(fperrors.TransferFailed, "Transfer backend completed but no payload was found.", "Check the backend output directory.")
-	}
-	if len(newPaths) > 1 {
-		return receivedPayload{}, fperrors.New(fperrors.TransferFailed, "Transfer backend produced multiple payloads.", "Receive one FilePilot payload at a time.")
-	}
-	path := newPaths[0]
-	info, err := os.Stat(path)
-	if err != nil {
-		return receivedPayload{}, fperrors.New(fperrors.TransferFailed, err.Error(), "Check the received payload path.")
-	}
-	if autoUnpack {
-		unpackedPath, ok, err := unpackFilePilotDirectoryPackage(path, downloadDir)
-		if err != nil {
-			return receivedPayload{}, fperrors.New(fperrors.TransferFailed, err.Error(), "Check that the received FilePilot Directory Package is valid.")
-		}
-		if ok {
-			return receivedPayload{
-				PayloadType: packaging.PayloadTypeDirectoryPackage,
-				OutputPath:  unpackedPath,
-				PackagePath: path,
-				FileSize:    info.Size(),
-				Unpacked:    true,
-			}, nil
-		}
-	}
-	return receivedPayload{
-		PayloadType: "file",
-		OutputPath:  path,
-		FileSize:    info.Size(),
-		Unpacked:    false,
-	}, nil
-}
-
-func unpackFilePilotDirectoryPackage(packagePath string, downloadDir string) (string, bool, error) {
-	manifest, ok, err := readDirectoryPackageManifest(packagePath)
-	if err != nil || !ok {
-		return "", ok, err
-	}
-	if manifest.PayloadType != packaging.PayloadTypeDirectoryPackage || manifest.CreatedBy != "filepilot" || manifest.SourceName == "" {
-		return "", false, nil
-	}
-	destination := nonConflictingPath(downloadDir, manifest.SourceName)
-	if err := extractDirectoryPackage(packagePath, destination, manifest.SourceName); err != nil {
-		return "", true, err
-	}
-	return destination, true, nil
-}
-
-func readDirectoryPackageManifest(packagePath string) (packaging.Manifest, bool, error) {
-	file, err := os.Open(packagePath)
-	if err != nil {
-		return packaging.Manifest{}, false, err
-	}
-	defer file.Close()
-
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return packaging.Manifest{}, false, nil
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			return packaging.Manifest{}, false, nil
-		}
-		if err != nil {
-			return packaging.Manifest{}, false, err
-		}
-		if header.Name != ".filepilot/manifest.json" || header.Typeflag != tar.TypeReg {
-			continue
-		}
-		var manifest packaging.Manifest
-		if err := json.NewDecoder(tarReader).Decode(&manifest); err != nil {
-			return packaging.Manifest{}, false, err
-		}
-		return manifest, true, nil
-	}
-}
-
-func extractDirectoryPackage(packagePath string, destination string, sourceName string) error {
-	file, err := os.Open(packagePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return err
-	}
-	defer gzipReader.Close()
-
-	destinationAbs, err := filepath.Abs(destination)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(destinationAbs, 0o755); err != nil {
-		return err
-	}
-
-	sourcePrefix := filepath.ToSlash(filepath.Clean(sourceName)) + "/"
-	tarReader := tar.NewReader(gzipReader)
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		name := filepath.ToSlash(filepath.Clean(header.Name))
-		if name == ".filepilot/manifest.json" || strings.HasPrefix(name, ".filepilot/") {
-			continue
-		}
-		if !strings.HasPrefix(name, sourcePrefix) {
-			continue
-		}
-		rel := strings.TrimPrefix(name, sourcePrefix)
-		if rel == "" || rel == "." {
-			continue
-		}
-		target := filepath.Join(destinationAbs, filepath.FromSlash(rel))
-		if !isWithinDir(destinationAbs, target) {
-			return fmt.Errorf("directory package contains an unsafe path")
-		}
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(file, tarReader); err != nil {
-				_ = file.Close()
-				return err
-			}
-			if err := file.Close(); err != nil {
-				return err
-			}
-		}
-	}
-}
-
-func nonConflictingPath(parentDir string, name string) string {
-	candidate := filepath.Join(parentDir, filepath.Base(filepath.Clean(name)))
-	if _, err := os.Stat(candidate); os.IsNotExist(err) {
-		return candidate
-	}
-	for index := 1; ; index++ {
-		candidate = filepath.Join(parentDir, fmt.Sprintf("%s-%d", filepath.Base(filepath.Clean(name)), index))
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
-		}
-	}
-}
-
-func isWithinDir(parent string, child string) bool {
-	parentAbs, err := filepath.Abs(parent)
-	if err != nil {
-		return false
-	}
-	childAbs, err := filepath.Abs(child)
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(parentAbs, childAbs)
-	return err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".."
 }
 
 func writeReceiveJSON(stdout io.Writer, sessionID string, attempt history.Attempt, resolved backend.Resolved) int {

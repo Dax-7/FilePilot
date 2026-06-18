@@ -13,7 +13,8 @@ func TestBundledBackendReleaseDocCoversLayoutAndHITLPolicy(t *testing.T) {
 	}
 	text := string(content)
 	for _, want := range []string{
-		"backend/<goos>-<goarch>/filepilot-backend",
+		"backend/<goos>-<goarch>/filepilot[.exe]",
+		"backend/<goos>-<goarch>/croc[.exe]",
 		"source: bundled",
 		"backend binary source",
 		"license",

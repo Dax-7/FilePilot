@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FilePilot</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">FilePilot Desktop</p>
+          <h1>FilePilot</h1>
+        </div>
+        <div class="status-pill" id="globalStatus">Ready</div>
+      </header>
+
+      <main>
+        <section class="mode-grid" id="modeGrid">
+          <button class="mode-card" id="sendMode" type="button">
+            <span class="mode-icon">↑</span>
+            <span>
+              <strong>Send files</strong>
+              <small>Choose one file or folder and share a session code.</small>
+            </span>
+          </button>
+          <button class="mode-card" id="receiveMode" type="button">
+            <span class="mode-icon">↓</span>
+            <span>
+              <strong>Receive files</strong>
+              <small>Paste a session code and choose where to save.</small>
+            </span>
+          </button>
+        </section>
+
+        <section class="panel hidden" id="sendPanel">
+          <div class="panel-header">
+            <button class="icon-button" id="sendBack" type="button" title="Back">←</button>
+            <h2>Send files</h2>
+          </div>
+          <div class="drop-zone" id="sendDrop">
+            <strong id="sendPathLabel">No file or folder selected</strong>
+            <span id="sendPathHint">Use one of the selectors below.</span>
+          </div>
+          <div class="button-row">
+            <button id="chooseFile" type="button">Choose File</button>
+            <button id="chooseFolder" type="button">Choose Folder</button>
+            <button class="primary" id="startSend" type="button">Send</button>
+          </div>
+          <div class="session-row hidden" id="sessionRow">
+            <code id="sessionCode"></code>
+            <button id="copyCode" type="button">Copy Code</button>
+          </div>
+          <ol class="log" id="sendLog"></ol>
+        </section>
+
+        <section class="panel hidden" id="receivePanel">
+          <div class="panel-header">
+            <button class="icon-button" id="receiveBack" type="button" title="Back">←</button>
+            <h2>Receive files</h2>
+          </div>
+          <label class="field">
+            <span>Session code</span>
+            <input id="receiveCode" autocomplete="off" placeholder="FP-river-copper-lamp-7K2Q9M4XP8" />
+          </label>
+          <label class="field">
+            <span>Save folder</span>
+            <div class="path-picker">
+              <input id="receiveFolder" readonly placeholder="Choose a save folder" />
+              <button id="chooseReceiveFolder" type="button">Browse</button>
+            </div>
+          </label>
+          <div class="button-row">
+            <button class="primary" id="startReceive" type="button">Start Receiving</button>
+            <button id="openFolder" class="hidden" type="button">Open Folder</button>
+          </div>
+          <ol class="log" id="receiveLog"></ol>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

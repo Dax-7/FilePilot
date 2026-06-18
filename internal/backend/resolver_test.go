@@ -50,20 +50,31 @@ func TestResolveFallsBackToBundledBeforePath(t *testing.T) {
 
 func TestResolveFindsBundledBackendInPlatformArchReleaseLayout(t *testing.T) {
 	bundleRoot := t.TempDir()
-	bundled := makeBackendFile(t, filepath.Join(bundleRoot, "backend", "linux-amd64"), "filepilot-backend")
+	bundled := makeBackendFile(t, filepath.Join(bundleRoot, "backend", "linux-amd64"), "filepilot")
 
 	result, err := Resolve(ResolveRequest{
-		BundledDir:     filepath.Join(bundleRoot, "backend"),
-		PathDirs:       nil,
-		CandidateNames: []string{"filepilot-backend"},
-		Platform:       "linux",
-		Arch:           "amd64",
+		BundledDir: filepath.Join(bundleRoot, "backend"),
+		PathDirs:   nil,
+		Platform:   "linux",
+		Arch:       "amd64",
 	})
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
 	if result.Source != SourceBundled || result.Path != bundled {
 		t.Fatalf("expected platform bundled backend, got %#v", result)
+	}
+}
+
+func TestDefaultCandidateNamesUsePlatformExecutableNames(t *testing.T) {
+	windows := DefaultCandidateNamesFor("windows")
+	if len(windows) != 2 || windows[0] != "filepilot.exe" || windows[1] != "croc.exe" {
+		t.Fatalf("windows candidate names = %#v", windows)
+	}
+
+	linux := DefaultCandidateNamesFor("linux")
+	if len(linux) != 2 || linux[0] != "filepilot" || linux[1] != "croc" {
+		t.Fatalf("linux candidate names = %#v", linux)
 	}
 }
 

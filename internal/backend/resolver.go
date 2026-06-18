@@ -20,7 +20,7 @@ const (
 	SourcePath       Source = "path"
 )
 
-var DefaultCandidateNames = []string{"filepilot-backend", "croc"}
+var DefaultCandidateNames = DefaultCandidateNamesFor(runtime.GOOS)
 
 type ResolveRequest struct {
 	ConfiguredPath string
@@ -40,8 +40,9 @@ type Resolved struct {
 
 func Resolve(req ResolveRequest) (Resolved, *fperrors.Error) {
 	candidateNames := req.CandidateNames
+	platform := firstNonEmpty(req.Platform, runtime.GOOS)
 	if len(candidateNames) == 0 {
-		candidateNames = DefaultCandidateNames
+		candidateNames = DefaultCandidateNamesFor(platform)
 	}
 
 	if req.ConfiguredPath != "" {
@@ -52,7 +53,6 @@ func Resolve(req ResolveRequest) (Resolved, *fperrors.Error) {
 	}
 
 	if req.BundledDir != "" {
-		platform := firstNonEmpty(req.Platform, runtime.GOOS)
 		arch := firstNonEmpty(req.Arch, runtime.GOARCH)
 		if path := findInDir(BundledPlatformDir(req.BundledDir, platform, arch), candidateNames); path != "" {
 			return Resolved{Name: "transfer-engine", Path: path, Source: SourceBundled}, nil
@@ -69,6 +69,13 @@ func Resolve(req ResolveRequest) (Resolved, *fperrors.Error) {
 	}
 
 	return Resolved{}, fperrors.New(fperrors.BackendNotFound, "No usable transfer backend was found.", "Configure backend_path or use a FilePilot bundle with a backend.")
+}
+
+func DefaultCandidateNamesFor(platform string) []string {
+	if platform == "windows" {
+		return []string{"filepilot.exe", "croc.exe"}
+	}
+	return []string{"filepilot", "croc"}
 }
 
 func DefaultBundledDir(executablePath string) string {

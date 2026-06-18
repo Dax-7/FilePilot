@@ -88,6 +88,20 @@ func TestEnvironmentOverridesConfiguredFilePilotPaths(t *testing.T) {
 	}
 }
 
+func TestResolveWithHomeUsesUserHomeForDefaultDownloadDir(t *testing.T) {
+	got, err := ResolveWithHome("linux", mapLookup(map[string]string{
+		"HOME": "/env-home/alice",
+	}), filepath.FromSlash("/home/alice"))
+	if err != nil {
+		t.Fatalf("ResolveWithHome returned error: %v", err)
+	}
+
+	want := filepath.FromSlash("/home/alice/Downloads/FilePilot")
+	if got.DownloadDir != want {
+		t.Fatalf("download dir mismatch: got %q want %q", got.DownloadDir, want)
+	}
+}
+
 func mapLookup(values map[string]string) func(string) string {
 	return func(key string) string {
 		return values[key]

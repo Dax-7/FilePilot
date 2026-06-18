@@ -1,7 +1,17 @@
 # Go build and test cache
 .gocache/
 coverage.out
+coverage/
 *.test
+
+# JavaScript and Wails generated files
+node_modules/
+package.json.md5
+cmd/filepilot-gui/frontend/wailsjs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Local build outputs
 bin/
@@ -12,12 +22,17 @@ release/
 *.dll
 *.so
 *.dylib
+!cmd/filepilot-gui/frontend/dist/
+!cmd/filepilot-gui/frontend/dist/**
 
 # FilePilot local transfer/package artifacts
 *.tar.gz
 internal/cli/FP-*/
 
 # Editor, OS, and local environment noise
+.env
+.env.*
+!.env.example
 .vscode/
 .idea/
 *.swp

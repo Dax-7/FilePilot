@@ -85,10 +85,11 @@ func TestRunFindsBundledBackendFromReleaseLayoutWithoutPath(t *testing.T) {
 			DownloadDir: filepath.Join(root, "downloads"),
 		},
 		Backend: backend.ResolveRequest{
-			BundledDir: bundledDir,
-			PathDirs:   nil,
-			Platform:   runtime.GOOS,
-			Arch:       runtime.GOARCH,
+			BundledDir:     bundledDir,
+			PathDirs:       nil,
+			CandidateNames: []string{"filepilot-backend" + scriptExt()},
+			Platform:       runtime.GOOS,
+			Arch:           runtime.GOARCH,
 		},
 		Getenv: func(string) string { return "" },
 	})
