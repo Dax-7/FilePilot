@@ -19,7 +19,9 @@ FilePilot resolves a bundled transfer backend from a directory next to the FileP
       filepilot.exe
 ```
 
-Release artifacts may bundle either a FilePilot-compatible transfer backend named `filepilot[.exe]` or a croc-compatible backend named `croc[.exe]`. The resolver derives the executable suffix from the runtime platform instead of hard-coding Windows paths into callers.
+First-release artifacts bundle a human-reviewed croc-compatible backend named `croc[.exe]`. Future release artifacts may bundle either a FilePilot-compatible transfer backend named `filepilot[.exe]` or a croc-compatible backend named `croc[.exe]`. The resolver derives the executable suffix from the runtime platform instead of hard-coding Windows paths into callers.
+
+The release packaging scripts should accept local, already-reviewed backend binary paths as publisher inputs. They should not download backend binaries automatically during packaging. This is a publisher-side packaging requirement only: ordinary Windows and Linux users receive the backend inside the final FilePilot release package and do not install croc, prepare backend binaries, or understand backend layout details for the default workflow.
 
 `filepilot` is the canonical executable name. Release artifacts should also provide `fp` as a short executable name that invokes the same CLI and command surface.
 
@@ -50,5 +52,7 @@ Before shipping real release artifacts, a human reviewer must approve:
 - The backend license and any notices that must ship with FilePilot.
 - Checksums or equivalent integrity metadata for each backend artifact.
 - The final release package contents for every supported platform.
+
+Use [release-backend-provenance.md](./release-backend-provenance.md) to record backend version, source URL, license, notice review, and backend checksums before setting a release manifest to `passed`.
 
 FilePilot must not download backend binaries at runtime, modify PATH, or call package managers.

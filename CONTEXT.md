@@ -16,6 +16,10 @@ _Avoid_: shorthand, shell alias
 A convenience executable entrypoint that invokes the same FilePilot CLI while preserving the Canonical Command Name in documentation and help text.
 _Avoid_: separate CLI, renamed product, command alias
 
+**Global CLI Registration**:
+An optional user-invoked release setup step that makes `filepilot` and `fp` available from arbitrary terminal working directories through the current user's command search path.
+_Avoid_: automatic PATH mutation, hidden installer side effect, shell-only alias
+
 **Desktop GUI**:
 A single-window FilePilot application for human send and receive workflows that uses the same transfer concepts as the CLI without becoming a separate product or role-specific app.
 _Avoid_: server app, client app, account console
@@ -83,6 +87,10 @@ _Avoid_: glossary, user README, release artifact policy
 **Release Artifact**:
 A concrete FilePilot package built for users after the Required Stability Gate has passed and human-reviewed backend, license, checksum, and package-content decisions are complete.
 _Avoid_: local build, packaging design, smoke-test fixture
+
+**First Release Support Matrix**:
+The officially supported platform set for the first public Release Artifacts: Windows amd64 and Linux amd64.
+_Avoid_: best-effort platform list, all Go-supported targets, source-build capability
 
 **Rendezvous Control Layer**:
 A lightweight coordination service that stores short-lived Transfer Session metadata and Backend Credentials, but never stores file contents.
@@ -201,6 +209,9 @@ Resolved: the Public MVP includes `send`, `receive`, `pack`, `doctor`, `clean`, 
 **Desktop GUI boundary after Public MVP**:
 Resolved: Desktop GUI work is a follow-on human interface over the existing send and receive transfer concepts. It must not replace or rename the CLI, introduce separate server/client applications, or add account, discovery, queue, sync, resume, or history workflows by default.
 
+**Release GUI and CLI relationship**:
+Resolved: first-release packages should ship the Desktop GUI, Canonical Command Name, and Short Executable Name as peer entrypoints in the same extracted package. GUI and CLI are both official FilePilot entrypoints over the same transfer semantics; the GUI is for human desktop workflows, while the CLI is for terminal, server, scripting, and Agent workflows. The first-release GUI should not modify PATH or perform Global CLI Registration.
+
 **MVP progress reporting**:
 Resolved: the Public MVP requires stable Transfer States and final structured results, not precise percentages or real-time transfer speeds parsed from backend output.
 
@@ -227,6 +238,12 @@ Resolved: the canonical receive command is `filepilot receive`. Short subcommand
 
 **Short executable naming**:
 Resolved: Public MVP release packaging should provide `fp` as a Short Executable Name for convenience while keeping `filepilot` as the Canonical Command Name. The short executable invokes the same command surface and does not introduce separate product language.
+
+**Portable package vs. Global CLI Registration**:
+Resolved: release packages should be immediately usable from their extracted directory and should also provide an explicit user-invoked Global CLI Registration step so `filepilot` and `fp` can be run from any terminal working directory. The release package should not silently mutate PATH or require a complex installer in the first release.
+
+**First release platform support**:
+Resolved: the first public Release Artifacts officially support Windows amd64 and Linux amd64 only. macOS, ARM builds, Linux distro packages, AppImage, Snap, Flatpak, MSI, and NSIS installers are future packaging targets rather than first-release acceptance criteria.
 
 **MVP doctor boundary**:
 Resolved: `filepilot doctor` performs Local Diagnostics only. Warnings such as proxy variables or suspected Fake-IP do not cause a non-zero exit code; fatal local blockers such as a missing backend or unwritable required directory do.

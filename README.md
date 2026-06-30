@@ -10,7 +10,7 @@ FilePilot has a runnable Public MVP path for sending and receiving files or dire
 
 The project is now in MVP Hardening Stage: validating real cross-machine transfer scenarios, stabilizing error boundaries, aligning documentation with the runnable CLI and GUI, and preparing release packaging. It is not yet a finalized Release Artifact.
 
-See [docs/mvp-hardening-plan.md](./docs/mvp-hardening-plan.md) for the hardening gate and [docs/release-bundled-backend.md](./docs/release-bundled-backend.md) for release packaging policy.
+See [docs/mvp-hardening-plan.md](./docs/mvp-hardening-plan.md) for the hardening gate, [docs/release-bundled-backend.md](./docs/release-bundled-backend.md) for release packaging policy, and [docs/release-user-guide.md](./docs/release-user-guide.md) for first-release user instructions.
 
 ## Quick Start
 
@@ -78,6 +78,13 @@ Install Wails once:
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
 ```
 
+Linux GUI prerequisites:
+
+- Go with Wails installed: `go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2`
+- Node.js 18 or newer. Node.js 20 LTS is recommended.
+- npm 8 or newer.
+- Wails Linux system packages for your distribution.
+
 Build the GUI on Windows:
 
 ```powershell
@@ -88,6 +95,25 @@ Build the GUI on Linux:
 
 ```bash
 sh ./scripts/build-gui-linux.sh
+```
+
+If the Linux host still has Node.js 12 from the distribution package manager, upgrade Node.js first. After upgrading, remove any partial frontend install created by the failed run:
+
+```bash
+node -v
+npm -v
+rm -rf cmd/filepilot-gui/frontend/node_modules
+sh ./scripts/build-gui-linux.sh
+```
+
+If `conda install nodejs=20` succeeds but `node -v` still reports Node.js 12, refresh the shell command cache and confirm that conda's `bin` directory comes before `/usr/bin`:
+
+```bash
+hash -r
+conda activate base
+which -a node npm
+node -v
+npm -v
 ```
 
 Install the Wails Linux system dependencies first. On Ubuntu 24.04, the build script automatically uses `wails build -tags webkit2_41` when `webkit2gtk-4.1` is available and `webkit2gtk-4.0` is not.
