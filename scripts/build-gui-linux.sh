@@ -9,19 +9,23 @@ cd "$GUI_DIR"
 
 (cd frontend && npm install)
 
-if [ -r /etc/os-release ]; then
-  . /etc/os-release
-  if [ "${ID:-}" = "ubuntu" ] && [ "${VERSION_ID:-}" = "24.04" ]; then
-    printf '%s\n' "Ubuntu 24.04 detected. If webkit2gtk-4.0 is unavailable, run: wails build -tags webkit2_41"
-  fi
-fi
+WAILS_TAGS=""
 
 if command -v pkg-config >/dev/null 2>&1; then
-  if ! pkg-config --exists webkit2gtk-4.0; then
-    printf '%s\n' "webkit2gtk-4.0 was not found. If the build fails, run: wails build -tags webkit2_41"
+  if pkg-config --exists webkit2gtk-4.0; then
+    WAILS_TAGS=""
+  elif pkg-config --exists webkit2gtk-4.1; then
+    WAILS_TAGS="webkit2_41"
+    printf '%s\n' "webkit2gtk-4.1 detected. Building with Wails tag: webkit2_41"
+  else
+    printf '%s\n' "webkit2gtk-4.0 or webkit2gtk-4.1 was not found. Install Wails Linux dependencies, then retry the build."
   fi
 else
   printf '%s\n' "pkg-config was not found. Install Wails Linux dependencies, then retry the build."
 fi
 
-wails build
+if [ -n "$WAILS_TAGS" ]; then
+  wails build -tags "$WAILS_TAGS"
+else
+  wails build
+fi

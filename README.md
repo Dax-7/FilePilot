@@ -46,6 +46,26 @@ cp bin/filepilot bin/fp
 
 Add the `bin` directory to your `PATH` if you want to run `filepilot` or `fp` from any directory. Without that, run the local binary path directly, such as `.\bin\filepilot.exe receive <session-id>` on Windows.
 
+### Linux Clone, Build, and Run Check
+
+On a Linux host, install Go first, then build and smoke-test the CLI from a fresh clone:
+
+```bash
+git clone https://github.com/Dax-7/FilePilot.git
+cd FilePilot
+go test ./...
+go build -o bin/filepilot ./cmd/filepilot
+cp bin/filepilot bin/fp
+./bin/filepilot doctor
+```
+
+`doctor` must find a compatible transfer backend before real send/receive can work. For source builds, either install a compatible backend such as `croc` on `PATH`, configure it explicitly, or prepare the release-style bundled backend layout described in `docs/release-bundled-backend.md`:
+
+```bash
+./bin/filepilot config set backend_path /usr/local/bin/croc
+./bin/filepilot doctor
+```
+
 ## Desktop GUI
 
 The desktop GUI is a human-facing Wails entrypoint. It does not replace the CLI: `filepilot send`, `filepilot receive`, JSON Agent API behavior, and release entrypoint semantics stay the same.
@@ -70,7 +90,9 @@ Build the GUI on Linux:
 sh ./scripts/build-gui-linux.sh
 ```
 
-On Ubuntu 24.04, Wails may need the newer WebKit tag if `webkit2gtk-4.0` is unavailable:
+Install the Wails Linux system dependencies first. On Ubuntu 24.04, the build script automatically uses `wails build -tags webkit2_41` when `webkit2gtk-4.1` is available and `webkit2gtk-4.0` is not.
+
+If you need to run the Wails command manually:
 
 ```bash
 cd cmd/filepilot-gui
