@@ -30,17 +30,17 @@ Use this record for each backend binary selected for a FilePilot release package
 - Target platform: linux-amd64
 - Package name: `FilePilot-v0.1.0-linux-amd64.tar.gz`
 - Backend name: croc
-- Backend version: pending Linux verification
+- Backend version: v10.4.3
 - Packaged path: `backend/linux-amd64/croc`
 - Local reviewed binary path: `/usr/local/bin/croc`
-- SHA-256: pending Linux verification
-- Source URL: pending Linux verification
-- Source release, tag, or commit: pending Linux verification
-- Download URL: pending Linux verification
-- Download checksum or signature source: pending Linux verification
-- Reviewer: pending
-- Review date: pending
-- Review status: pending
+- SHA-256: dca4d381a27fdf1742c449884566ed0415ccaa0c90f745215a30eba185033426
+- Source URL: `https://github.com/schollz/croc/releases/tag/v10.4.3`
+- Source release, tag, or commit: `v10.4.3`
+- Download URL: `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_Linux-64bit.tar.gz`
+- Download checksum or signature source: `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_checksums.txt`
+- Reviewer: Dax
+- Review date: 2026-07-01
+- Review status: approved
 
 ## License And Notices
 

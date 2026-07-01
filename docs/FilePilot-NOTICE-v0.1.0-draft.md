@@ -31,10 +31,10 @@ Linux package:
 - Backend version: pending Linux verification
 - Target platform: linux-amd64
 - Packaged path: `backend/linux-amd64/croc`
-- Source URL: pending Linux verification
+- Source URL: `https://github.com/schollz/croc/releases/tag/v10.4.3`
 - License: MIT
 - License URL: `https://github.com/schollz/croc/blob/main/LICENSE`
-- Backend SHA-256: pending Linux verification
+- Backend SHA-256: `dca4d381a27fdf1742c449884566ed0415ccaa0c90f745215a30eba185033426`
 
 ## Required Third-Party Notices
 
@@ -42,8 +42,8 @@ The bundled croc backend is licensed under MIT. Before publication, include the 
 
 ## Review
 
-- Reviewer: pending
-- Review date: pending
-- Status: pending
+- Reviewer: Dax
+- Review date: 2026-07-01
+- Review status: approved
 
 Do not publish a release package while this file still contains placeholder values or pending review status.
