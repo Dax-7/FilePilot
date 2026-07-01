@@ -4,49 +4,70 @@ Use this record for each backend binary selected for a FilePilot release package
 
 ## Release
 
-- FilePilot version:
-- Target platform: windows-amd64 / linux-amd64
-- Package name:
-- Release acceptance status: pending / passed
+- FilePilot version: v0.1.0
+- Release acceptance status: pending
 
-## Backend Binary
+## Windows Backend Binary
 
+- Target platform: windows-amd64
+- Package name: `FilePilot-v0.1.0-windows-amd64.zip`
 - Backend name: croc
-- Backend version:
-- Packaged path: `backend/<goos>-<goarch>/croc[.exe]`
-- Local reviewed binary path:
-- SHA-256:
-- Source URL:
-- Source release, tag, or commit:
-- Download URL:
-- Download checksum or signature source:
-- Reviewer:
-- Review date:
-- Review status: pending / approved / rejected
+- Backend version: v10.4.3
+- Packaged path: `backend/windows-amd64/croc.exe`
+- Local reviewed binary path: `C:\Users\Dan\scoop\apps\croc\10.4.3\croc.exe`
+- Local shim path, not for packaging: `C:\Users\Dan\scoop\shims\croc.exe`
+- SHA-256: `ec650bdc2bffacecf400239022c9fc378b051793f311a04272cb830471e29f3f`
+- Source URL: `https://github.com/schollz/croc/releases/tag/v10.4.3`
+- Source release, tag, or commit: `v10.4.3`
+- Download URL: `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_Windows-64bit.zip`
+- Download checksum or signature source: Scoop manifest recorded archive SHA-256 `7d13d4871ceed35d62057df33e4f621fd6dbcb2e8cb5be0e754c20297efa15f8`; Scoop autoupdate points to `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_checksums.txt`
+- Reviewer: pending
+- Review date: pending
+- Review status: pending
+
+## Linux Backend Binary
+
+- Target platform: linux-amd64
+- Package name: `FilePilot-v0.1.0-linux-amd64.tar.gz`
+- Backend name: croc
+- Backend version: pending Linux verification
+- Packaged path: `backend/linux-amd64/croc`
+- Local reviewed binary path: `/usr/local/bin/croc`
+- SHA-256: pending Linux verification
+- Source URL: pending Linux verification
+- Source release, tag, or commit: pending Linux verification
+- Download URL: pending Linux verification
+- Download checksum or signature source: pending Linux verification
+- Reviewer: pending
+- Review date: pending
+- Review status: pending
 
 ## License And Notices
 
-- License name:
-- License URL:
-- License file reviewed: yes / no
-- Required notices reviewed: yes / no
-- Package `NOTICE.md` source path:
-- NOTICE reviewer:
-- NOTICE review date:
-- NOTICE review status: pending / approved / rejected
+- Backend license name: MIT
+- Backend license URL: `https://github.com/schollz/croc/blob/main/LICENSE`
+- Windows backend license file reviewed: local Scoop package contains `C:\Users\Dan\scoop\apps\croc\10.4.3\LICENSE`
+- Linux backend license file reviewed: pending Linux verification
+- Required notices reviewed: pending
+- Package `NOTICE.md` source path: `docs\FilePilot-NOTICE-v0.1.0-draft.md`
+- NOTICE reviewer: pending
+- NOTICE review date: pending
+- NOTICE review status: pending
 
 ## Commands
 
 Windows:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 C:\release-inputs\croc-windows-amd64.exe
+& 'C:\Users\Dan\scoop\apps\croc\10.4.3\croc.exe' --version
+Get-FileHash -Algorithm SHA256 'C:\Users\Dan\scoop\apps\croc\10.4.3\croc.exe'
 ```
 
 Linux:
 
 ```bash
-sha256sum /release-inputs/croc-linux-amd64
+/usr/local/bin/croc --version
+sha256sum /usr/local/bin/croc
 ```
 
 ## Packaging Inputs
@@ -56,12 +77,12 @@ Windows:
 ```powershell
 .\scripts\package-release-windows.ps1 `
   -Version v0.1.0 `
-  -CrocPath C:\release-inputs\croc-windows-amd64.exe `
-  -BackendSource "https://example.invalid/reviewed-backend-release" `
-  -BackendVersion "<reviewed backend version>" `
-  -BackendLicense "<reviewed license name>" `
-  -BackendLicenseUrl "https://example.invalid/reviewed-backend-license" `
-  -NoticePath C:\release-inputs\FilePilot-NOTICE.md
+  -CrocPath 'C:\Users\Dan\scoop\apps\croc\10.4.3\croc.exe' `
+  -BackendSource 'https://github.com/schollz/croc/releases/tag/v10.4.3' `
+  -BackendVersion 'v10.4.3' `
+  -BackendLicense 'MIT' `
+  -BackendLicenseUrl 'https://github.com/schollz/croc/blob/main/LICENSE' `
+  -NoticePath .\docs\FilePilot-NOTICE-v0.1.0-draft.md
 ```
 
 Linux:
@@ -69,12 +90,12 @@ Linux:
 ```bash
 sh ./scripts/package-release-linux.sh \
   --version v0.1.0 \
-  --croc-path /release-inputs/croc-linux-amd64 \
-  --backend-source https://example.invalid/reviewed-backend-release \
-  --backend-version "<reviewed backend version>" \
-  --backend-license "<reviewed license name>" \
-  --backend-license-url https://example.invalid/reviewed-backend-license \
-  --notice-path /release-inputs/FilePilot-NOTICE.md
+  --croc-path /usr/local/bin/croc \
+  --backend-source '<verified Linux backend source URL>' \
+  --backend-version '<verified Linux backend version>' \
+  --backend-license MIT \
+  --backend-license-url https://github.com/schollz/croc/blob/main/LICENSE \
+  --notice-path ./docs/FilePilot-NOTICE-v0.1.0-draft.md
 ```
 
 The package scripts do not download backend binaries or verify upstream license terms. They only record publisher-supplied provenance, copy the reviewed local backend binary, compute package checksums, and include the reviewed `NOTICE.md`.
