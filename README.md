@@ -235,3 +235,12 @@ go test ./...
 ```
 
 The Public MVP is defined in [PRD.md](./PRD.md). Implementation decisions are recorded in [docs/adr](./docs/adr), and historical implementation slices are listed in [ISSUES.md](./ISSUES.md).
+
+## License
+
+FilePilot is licensed under MIT. See [LICENSE](./LICENSE).
+
+Bundled third-party components remain under their respective licenses. Release
+packages may include croc as a third-party transfer backend; croc is not
+FilePilot-owned code. See [NOTICE](./NOTICE), [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md),
+and files under [licenses/](./licenses) for bundled third-party notices.

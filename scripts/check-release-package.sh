@@ -117,14 +117,14 @@ case "$PLATFORM" in
     EXPECTED_BACKEND_PATH="backend/windows-amd64/croc.exe"
     CLI_EXECUTABLE="$PACKAGE_ROOT/filepilot.exe"
     SHORT_EXECUTABLE="$PACKAGE_ROOT/fp.exe"
-    REQUIRED_FILES="filepilot-gui.exe filepilot.exe fp.exe install-cli.ps1 uninstall-cli.ps1 backend/windows-amd64/croc.exe QUICKSTART.md NOTICE.md checksums.txt release-manifest.json"
+    REQUIRED_FILES="filepilot-gui.exe filepilot.exe fp.exe install-cli.ps1 uninstall-cli.ps1 backend/windows-amd64/croc.exe QUICKSTART.md LICENSE NOTICE.md THIRD_PARTY_NOTICES.md licenses/croc-MIT-LICENSE.txt checksums.txt release-manifest.json"
     ;;
   linux-amd64)
     EXPECTED_FORMAT="tar.gz"
     EXPECTED_BACKEND_PATH="backend/linux-amd64/croc"
     CLI_EXECUTABLE="$PACKAGE_ROOT/filepilot"
     SHORT_EXECUTABLE="$PACKAGE_ROOT/fp"
-    REQUIRED_FILES="filepilot-gui filepilot fp install-cli.sh uninstall-cli.sh backend/linux-amd64/croc QUICKSTART.md NOTICE.md checksums.txt release-manifest.json"
+    REQUIRED_FILES="filepilot-gui filepilot fp install-cli.sh uninstall-cli.sh backend/linux-amd64/croc QUICKSTART.md LICENSE NOTICE.md THIRD_PARTY_NOTICES.md licenses/croc-MIT-LICENSE.txt checksums.txt release-manifest.json"
     ;;
   *)
     printf '%s\n' "Unsupported target platform: $PLATFORM" >&2
@@ -248,10 +248,20 @@ if [ "$SKIP_EXECUTABLE_CHECKS" -eq 1 ]; then
 elif [ "$CURRENT_PLATFORM" != "$PLATFORM" ]; then
   skip "Executable checks require $PLATFORM but current host is $CURRENT_PLATFORM"
 else
-  doctor_output=$("$CLI_EXECUTABLE" doctor 2>&1) || {
+  ACCEPTANCE_ROOT="${TMPDIR:-/tmp}/filepilot-acceptance-$$"
+  ACCEPTANCE_CONFIG="$ACCEPTANCE_ROOT/config.toml"
+  ACCEPTANCE_CACHE="$ACCEPTANCE_ROOT/cache"
+  ACCEPTANCE_LOG="$ACCEPTANCE_ROOT/logs"
+  ACCEPTANCE_DOWNLOAD="$ACCEPTANCE_ROOT/downloads"
+  rm -rf "$ACCEPTANCE_ROOT"
+  mkdir -p "$ACCEPTANCE_CACHE" "$ACCEPTANCE_LOG" "$ACCEPTANCE_DOWNLOAD"
+  escaped_download=$(printf '%s' "$ACCEPTANCE_DOWNLOAD" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  printf 'download_dir = "%s"\n' "$escaped_download" > "$ACCEPTANCE_CONFIG"
+  doctor_output=$(FILEPILOT_CONFIG="$ACCEPTANCE_CONFIG" FILEPILOT_CACHE_DIR="$ACCEPTANCE_CACHE" FILEPILOT_LOG_DIR="$ACCEPTANCE_LOG" "$CLI_EXECUTABLE" doctor 2>&1) || {
     fail "filepilot doctor exited with a non-zero status"
     doctor_output=""
   }
+  rm -rf "$ACCEPTANCE_ROOT"
   printf '%s\n' "$doctor_output" | grep -Fq "Backend source: bundled" && pass "filepilot doctor reports bundled backend" || fail "filepilot doctor output did not report bundled backend"
 
   help_output=$("$CLI_EXECUTABLE" --help 2>&1) || {

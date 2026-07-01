@@ -155,6 +155,17 @@ copy_optional_file() {
   return 1
 }
 
+copy_required_directory() {
+  source=$1
+  destination=$2
+  if [ ! -d "$source" ]; then
+    printf '%s\n' "Required directory not found: $source" >&2
+    exit 1
+  fi
+  mkdir -p "$destination"
+  cp -R "$source"/. "$destination"/
+}
+
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
@@ -204,6 +215,9 @@ copy_required_file "$CLI_PATH" "$PACKAGE_DIR/filepilot"
 copy_required_file "$CLI_PATH" "$PACKAGE_DIR/fp"
 copy_required_file "$GUI_PATH" "$PACKAGE_DIR/filepilot-gui"
 copy_required_file "$CROC_PATH" "$PACKAGE_DIR/backend/linux-amd64/croc"
+copy_required_file "$REPO_ROOT/LICENSE" "$PACKAGE_DIR/LICENSE"
+copy_required_file "$REPO_ROOT/THIRD_PARTY_NOTICES.md" "$PACKAGE_DIR/THIRD_PARTY_NOTICES.md"
+copy_required_directory "$REPO_ROOT/licenses" "$PACKAGE_DIR/licenses"
 chmod 0755 "$PACKAGE_DIR/filepilot" "$PACKAGE_DIR/fp" "$PACKAGE_DIR/filepilot-gui" "$PACKAGE_DIR/backend/linux-amd64/croc"
 
 copy_optional_file "$REPO_ROOT/scripts/install-cli.sh" "$PACKAGE_DIR/install-cli.sh" || true
@@ -230,6 +244,8 @@ fi
 
 if [ -n "$NOTICE_PATH" ]; then
   copy_required_file "$NOTICE_PATH" "$PACKAGE_DIR/NOTICE.md"
+elif copy_optional_file "$REPO_ROOT/NOTICE" "$PACKAGE_DIR/NOTICE.md"; then
+  :
 elif ! copy_optional_file "$REPO_ROOT/docs/release-notice-template.md" "$PACKAGE_DIR/NOTICE.md"; then
   cat > "$PACKAGE_DIR/NOTICE.md" <<'NOTICE'
 # FilePilot Notices

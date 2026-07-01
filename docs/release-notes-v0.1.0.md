@@ -8,7 +8,7 @@ Do not publish this release text until:
 - `release_acceptance_status` is set to `passed` only after package checks and human review,
 - [release-acceptance-checklist.md](./release-acceptance-checklist.md) is complete,
 - [release-backend-provenance.md](./release-backend-provenance.md) is complete for every bundled backend binary,
-- the final package `NOTICE.md`, `checksums.txt`, and `release-manifest.json` files have been reviewed.
+- the final package `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, `licenses/`, `checksums.txt`, and `release-manifest.json` files have been reviewed.
 
 ## GitHub Release Fields
 
@@ -128,7 +128,7 @@ To unregister, run `.\uninstall-cli.ps1` on Windows or `./uninstall-cli.sh` on L
 - `fp` short CLI entrypoint.
 - Optional user-scoped CLI registration and unregistration scripts.
 - Bundled transfer support for the default workflow.
-- `QUICKSTART.md`, `NOTICE.md`, `checksums.txt`, and `release-manifest.json`.
+- `QUICKSTART.md`, `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, `licenses/`, `checksums.txt`, and `release-manifest.json`.
 
 ## Known Limits
 
@@ -149,5 +149,8 @@ Each release package includes:
 - `checksums.txt`
 - `release-manifest.json`
 - `NOTICE.md`
+- `LICENSE`
+- `THIRD_PARTY_NOTICES.md`
+- `licenses/`
 
 Before publication, the FilePilot release acceptance pass must verify package contents, manifest fields, checksums, bundled transfer support discovery, CLI help output, GUI startup, optional CLI registration, real cross-machine transfers, and human-reviewed backend provenance and notices.

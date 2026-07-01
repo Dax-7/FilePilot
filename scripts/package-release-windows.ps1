@@ -82,6 +82,18 @@ function Copy-OptionalFile {
     return $false
 }
 
+function Copy-RequiredDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) {
+        throw "Required directory not found: $Source"
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
+}
+
 function Get-RelativePath {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -156,6 +168,9 @@ Copy-RequiredFile -Source $cliPath -Destination (Join-Path $PackageDir 'filepilo
 Copy-RequiredFile -Source $cliPath -Destination (Join-Path $PackageDir 'fp.exe')
 Copy-RequiredFile -Source $guiPath -Destination (Join-Path $PackageDir 'filepilot-gui.exe')
 Copy-RequiredFile -Source $resolvedCroc.Path -Destination (Join-Path $PackageDir 'backend\windows-amd64\croc.exe')
+Copy-RequiredFile -Source (Join-Path $RepoRoot 'LICENSE') -Destination (Join-Path $PackageDir 'LICENSE')
+Copy-RequiredFile -Source (Join-Path $RepoRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $PackageDir 'THIRD_PARTY_NOTICES.md')
+Copy-RequiredDirectory -Source (Join-Path $RepoRoot 'licenses') -Destination (Join-Path $PackageDir 'licenses')
 
 Copy-OptionalFile -Source (Join-Path $RepoRoot 'scripts\install-cli.ps1') -Destination (Join-Path $PackageDir 'install-cli.ps1') | Out-Null
 Copy-OptionalFile -Source (Join-Path $RepoRoot 'scripts\uninstall-cli.ps1') -Destination (Join-Path $PackageDir 'uninstall-cli.ps1') | Out-Null
@@ -180,6 +195,8 @@ elseif (-not (Copy-OptionalFile -Source (Join-Path $RepoRoot 'docs\release-quick
 
 if ($NoticePath -ne '') {
     Copy-RequiredFile -Source $NoticePath -Destination (Join-Path $PackageDir 'NOTICE.md')
+}
+elseif (Copy-OptionalFile -Source (Join-Path $RepoRoot 'NOTICE') -Destination (Join-Path $PackageDir 'NOTICE.md')) {
 }
 elseif (-not (Copy-OptionalFile -Source (Join-Path $RepoRoot 'docs\release-notice-template.md') -Destination (Join-Path $PackageDir 'NOTICE.md'))) {
     @(

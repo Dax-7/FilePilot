@@ -13,7 +13,7 @@ FilePilot lets two machines send and receive files or directories with a FilePil
 3. Open the extracted `FilePilot/` directory.
 4. Run either the Desktop GUI or the CLI from that directory.
 
-The release package includes the FilePilot Desktop GUI, `filepilot`, `fp`, optional CLI registration scripts, bundled transfer support, `QUICKSTART.md`, `NOTICE.md`, `checksums.txt`, and `release-manifest.json`.
+The release package includes the FilePilot Desktop GUI, `filepilot`, `fp`, optional CLI registration scripts, bundled transfer support, `QUICKSTART.md`, `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, `licenses/`, `checksums.txt`, and `release-manifest.json`.
 
 ## Desktop GUI
 

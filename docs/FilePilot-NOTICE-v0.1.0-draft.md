@@ -1,6 +1,6 @@
 # FilePilot Notices
 
-This is a draft notice file for FilePilot v0.1.0 release packages. Do not use it for a published release until the pending fields below are reviewed and resolved.
+This notice file is prepared for FilePilot v0.1.0 release packages.
 
 ## FilePilot
 
@@ -8,11 +8,12 @@ FilePilot release package:
 
 - Version: v0.1.0
 - Source: `https://github.com/Dax-7/FilePilot`
-- License: pending project license decision
+- License: MIT
+- License file: `LICENSE`
 
 ## Bundled Transfer Support
 
-This FilePilot package includes a human-reviewed backend-compatible executable for the default transfer workflow.
+This FilePilot package may include a human-reviewed backend-compatible executable for the default transfer workflow. Bundled backend binaries are third-party components and are not FilePilot-owned code.
 
 Windows package:
 
@@ -28,7 +29,7 @@ Windows package:
 Linux package:
 
 - Backend name: croc
-- Backend version: pending Linux verification
+- Backend version: v10.4.3
 - Target platform: linux-amd64
 - Packaged path: `backend/linux-amd64/croc`
 - Source URL: `https://github.com/schollz/croc/releases/tag/v10.4.3`
@@ -38,12 +39,10 @@ Linux package:
 
 ## Required Third-Party Notices
 
-The bundled croc backend is licensed under MIT. Before publication, include the exact required croc license notice from the reviewed release source or package license file.
+The bundled croc backend is licensed under MIT. The package includes croc notice metadata in `THIRD_PARTY_NOTICES.md` and the croc MIT license text in `licenses/croc-MIT-LICENSE.txt`.
 
 ## Review
 
 - Reviewer: Dax
 - Review date: 2026-07-01
 - Review status: approved
-
-Do not publish a release package while this file still contains placeholder values or pending review status.

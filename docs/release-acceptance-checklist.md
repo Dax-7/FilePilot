@@ -49,6 +49,7 @@ The same-platform checks verify:
 - manifest backend package path, license fields, and backend checksum,
 - manifest file records for required package files,
 - `checksums.txt` entries and SHA-256 values,
+- `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, and `licenses/` third-party license files,
 - `filepilot doctor` reports `Backend source: bundled`,
 - `filepilot --help` and `fp --help` run successfully.
 

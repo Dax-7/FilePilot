@@ -52,7 +52,11 @@ FilePilot/
     windows-amd64/
       croc.exe
   QUICKSTART.md
+  LICENSE
   NOTICE.md
+  THIRD_PARTY_NOTICES.md
+  licenses/
+    croc-MIT-LICENSE.txt
   checksums.txt
   release-manifest.json
 ```
@@ -70,7 +74,11 @@ FilePilot/
     linux-amd64/
       croc
   QUICKSTART.md
+  LICENSE
   NOTICE.md
+  THIRD_PARTY_NOTICES.md
+  licenses/
+    croc-MIT-LICENSE.txt
   checksums.txt
   release-manifest.json
 ```
@@ -136,6 +144,10 @@ Each package should include:
 
 - `checksums.txt`
 - `release-manifest.json`
+- `LICENSE`
+- `NOTICE.md`
+- `THIRD_PARTY_NOTICES.md`
+- `licenses/`
 
 `release-manifest.json` should record:
 
@@ -214,7 +226,7 @@ Windows packaging:
   -BackendVersion "<reviewed backend version>" `
   -BackendLicense "<reviewed backend license>" `
   -BackendLicenseUrl "https://example.invalid/reviewed-croc-license" `
-  -NoticePath C:\release-inputs\FilePilot-NOTICE.md
+  -NoticePath .\NOTICE
 ```
 
 Linux packaging:
@@ -227,7 +239,7 @@ sh ./scripts/package-release-linux.sh \
   --backend-version "<reviewed backend version>" \
   --backend-license "<reviewed backend license>" \
   --backend-license-url https://example.invalid/reviewed-croc-license \
-  --notice-path /release-inputs/FilePilot-NOTICE.md
+  --notice-path ./NOTICE
 ```
 
 The scripts do not download backend binaries. `-CrocPath` and `--croc-path` must point to a local backend binary that has already been reviewed by the publisher. Backend version, source, license, license URL, notice file, and checksums remain publisher-supplied release inputs. By default, generated manifests use `release_acceptance_status: "pending"` until the release acceptance pass and human backend review are complete. Setting acceptance status to `passed` requires explicit reviewed backend version, license, license URL, and notice path inputs.

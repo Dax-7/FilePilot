@@ -1,0 +1,12 @@
+FilePilot Notices
+
+FilePilot is licensed under the MIT License. See LICENSE for the FilePilot
+license terms.
+
+FilePilot release packages may include third-party components to provide the
+default transfer workflow. In v0.1.0, FilePilot may bundle croc as a transfer
+backend. croc is third-party software and is not FilePilot-owned code.
+
+Bundled third-party components remain under their respective licenses. See
+THIRD_PARTY_NOTICES.md and files under licenses/ for third-party license
+notices that must be retained when redistributing FilePilot release packages.

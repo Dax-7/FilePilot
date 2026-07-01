@@ -115,7 +115,10 @@ switch ($Platform) {
             'uninstall-cli.ps1',
             'backend/windows-amd64/croc.exe',
             'QUICKSTART.md',
+            'LICENSE',
             'NOTICE.md',
+            'THIRD_PARTY_NOTICES.md',
+            'licenses/croc-MIT-LICENSE.txt',
             'checksums.txt',
             'release-manifest.json'
         )
@@ -133,7 +136,10 @@ switch ($Platform) {
             'uninstall-cli.sh',
             'backend/linux-amd64/croc',
             'QUICKSTART.md',
+            'LICENSE',
             'NOTICE.md',
+            'THIRD_PARTY_NOTICES.md',
+            'licenses/croc-MIT-LICENSE.txt',
             'checksums.txt',
             'release-manifest.json'
         )
@@ -277,7 +283,49 @@ elseif ($currentPlatform -ne $Platform) {
     Skip "Executable checks require $Platform but current host is $currentPlatform"
 }
 else {
-    Test-Command -Executable $cliExecutable -Arguments @('doctor') -ExpectedText 'Backend source: bundled' -Label 'filepilot doctor reports bundled backend'
+    $acceptanceRoot = Join-Path ([System.IO.Path]::GetTempPath()) "filepilot-acceptance-$PID"
+    $acceptanceConfig = Join-Path $acceptanceRoot 'config.toml'
+    $acceptanceCache = Join-Path $acceptanceRoot 'cache'
+    $acceptanceLog = Join-Path $acceptanceRoot 'logs'
+    $acceptanceDownload = Join-Path $acceptanceRoot 'downloads'
+    if (Test-Path -LiteralPath $acceptanceRoot) {
+        Remove-Item -LiteralPath $acceptanceRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $acceptanceRoot, $acceptanceCache, $acceptanceLog, $acceptanceDownload -Force | Out-Null
+    $escapedDownload = $acceptanceDownload.Replace('\', '\\').Replace('"', '\"')
+    [System.IO.File]::WriteAllText($acceptanceConfig, "download_dir = `"$escapedDownload`"`n", [System.Text.UTF8Encoding]::new($false))
+    $previousConfig = $env:FILEPILOT_CONFIG
+    $previousCache = $env:FILEPILOT_CACHE_DIR
+    $previousLog = $env:FILEPILOT_LOG_DIR
+    try {
+        $env:FILEPILOT_CONFIG = $acceptanceConfig
+        $env:FILEPILOT_CACHE_DIR = $acceptanceCache
+        $env:FILEPILOT_LOG_DIR = $acceptanceLog
+        Test-Command -Executable $cliExecutable -Arguments @('doctor') -ExpectedText 'Backend source: bundled' -Label 'filepilot doctor reports bundled backend'
+    }
+    finally {
+        if ($null -eq $previousConfig) {
+            Remove-Item Env:\FILEPILOT_CONFIG -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:FILEPILOT_CONFIG = $previousConfig
+        }
+        if ($null -eq $previousCache) {
+            Remove-Item Env:\FILEPILOT_CACHE_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:FILEPILOT_CACHE_DIR = $previousCache
+        }
+        if ($null -eq $previousLog) {
+            Remove-Item Env:\FILEPILOT_LOG_DIR -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:FILEPILOT_LOG_DIR = $previousLog
+        }
+        if (Test-Path -LiteralPath $acceptanceRoot) {
+            Remove-Item -LiteralPath $acceptanceRoot -Recurse -Force
+        }
+    }
     Test-Command -Executable $cliExecutable -Arguments @('--help') -ExpectedText 'Usage: filepilot' -Label 'filepilot --help runs'
     Test-Command -Executable $shortExecutable -Arguments @('--help') -ExpectedText 'Usage: filepilot' -Label 'fp --help runs'
 }

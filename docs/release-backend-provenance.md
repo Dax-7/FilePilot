@@ -21,9 +21,9 @@ Use this record for each backend binary selected for a FilePilot release package
 - Source release, tag, or commit: `v10.4.3`
 - Download URL: `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_Windows-64bit.zip`
 - Download checksum or signature source: Scoop manifest recorded archive SHA-256 `7d13d4871ceed35d62057df33e4f621fd6dbcb2e8cb5be0e754c20297efa15f8`; Scoop autoupdate points to `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_checksums.txt`
-- Reviewer: pending
-- Review date: pending
-- Review status: pending
+- Reviewer: Dax
+- Review date: 2026-07-01
+- Review status: approved
 
 ## Linux Backend Binary
 
@@ -33,7 +33,7 @@ Use this record for each backend binary selected for a FilePilot release package
 - Backend version: v10.4.3
 - Packaged path: `backend/linux-amd64/croc`
 - Local reviewed binary path: `/usr/local/bin/croc`
-- SHA-256: dca4d381a27fdf1742c449884566ed0415ccaa0c90f745215a30eba185033426
+- SHA-256: `dca4d381a27fdf1742c449884566ed0415ccaa0c90f745215a30eba185033426`
 - Source URL: `https://github.com/schollz/croc/releases/tag/v10.4.3`
 - Source release, tag, or commit: `v10.4.3`
 - Download URL: `https://github.com/schollz/croc/releases/download/v10.4.3/croc_v10.4.3_Linux-64bit.tar.gz`
@@ -47,12 +47,12 @@ Use this record for each backend binary selected for a FilePilot release package
 - Backend license name: MIT
 - Backend license URL: `https://github.com/schollz/croc/blob/main/LICENSE`
 - Windows backend license file reviewed: local Scoop package contains `C:\Users\Dan\scoop\apps\croc\10.4.3\LICENSE`
-- Linux backend license file reviewed: pending Linux verification
-- Required notices reviewed: pending
-- Package `NOTICE.md` source path: `docs\FilePilot-NOTICE-v0.1.0-draft.md`
-- NOTICE reviewer: pending
-- NOTICE review date: pending
-- NOTICE review status: pending
+- Linux backend license file reviewed: upstream croc MIT license text recorded in `licenses/croc-MIT-LICENSE.txt`
+- Required notices reviewed: approved; release packages include `LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`, and `licenses/croc-MIT-LICENSE.txt`
+- Package `NOTICE.md` source path: `NOTICE`
+- NOTICE reviewer: Dax
+- NOTICE review date: 2026-07-01
+- NOTICE review status: approved
 
 ## Commands
 
@@ -82,7 +82,7 @@ Windows:
   -BackendVersion 'v10.4.3' `
   -BackendLicense 'MIT' `
   -BackendLicenseUrl 'https://github.com/schollz/croc/blob/main/LICENSE' `
-  -NoticePath .\docs\FilePilot-NOTICE-v0.1.0-draft.md
+  -NoticePath .\NOTICE
 ```
 
 Linux:
@@ -91,11 +91,11 @@ Linux:
 sh ./scripts/package-release-linux.sh \
   --version v0.1.0 \
   --croc-path /usr/local/bin/croc \
-  --backend-source '<verified Linux backend source URL>' \
-  --backend-version '<verified Linux backend version>' \
+  --backend-source https://github.com/schollz/croc/releases/tag/v10.4.3 \
+  --backend-version v10.4.3 \
   --backend-license MIT \
   --backend-license-url https://github.com/schollz/croc/blob/main/LICENSE \
-  --notice-path ./docs/FilePilot-NOTICE-v0.1.0-draft.md
+  --notice-path ./NOTICE
 ```
 
 The package scripts do not download backend binaries or verify upstream license terms. They only record publisher-supplied provenance, copy the reviewed local backend binary, compute package checksums, and include the reviewed `NOTICE.md`.
